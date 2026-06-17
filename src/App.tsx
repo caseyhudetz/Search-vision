@@ -391,51 +391,6 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </button>
         </div>
       )}
-      {isRenewalScanFlow && convStep === 0 && userMessages.length === 0 && chipsReady && (
-        <div className="chip-fade-in" style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {["Yes, I'm worried about price hikes"].map((label) => (
-            <button
-              key={label}
-              onMouseDown={(e) => { e.preventDefault(); sendMessage(label); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '6px 14px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-      {isRenewalScanFlow && convStep === 1 && userMessages.length === 1 && chipsReady && (
-        <div className="chip-fade-in" style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {["Yes, let's do that."].map((label) => (
-            <button
-              key={label}
-              onMouseDown={(e) => { e.preventDefault(); sendMessage(label); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '6px 14px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-      {isRenewalScanFlow && convStep === 2 && userMessages.length === 2 && chipsReady && (
-        <div className="chip-fade-in" style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {['Add Primary Owner'].map((label) => (
-            <button
-              key={label}
-              onMouseDown={(e) => { e.preventDefault(); sendMessage(label); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '6px 14px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
       {isSLAFlow && convStep === 0 && (
         <div style={{ marginBottom: 8 }}>
           <button
@@ -470,6 +425,13 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
+          onFocus={() => {
+            if (!inputValue && isRenewalScanFlow) {
+              if (convStep === 0 && userMessages.length === 0) setInputValue("Yes, I'm worried about price hikes");
+              else if (convStep === 1 && userMessages.length === 1) setInputValue("Yes, let's do that.");
+              else if (convStep === 2 && userMessages.length === 2) setInputValue('Add Primary Owner');
+            }
+          }}
           placeholder="Ask a question..."
           style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
         />
@@ -2015,9 +1977,7 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
         I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for surprise price hikes?
       </Text>
-      <InlineFollowUp onContinue={handle} chips={chipsReady ? [
-        { label: "Yes, I'm worried about price hikes", onClick: () => handle("Yes, I'm worried about price hikes") },
-      ] : []} />
+      <InlineFollowUp onContinue={handle} chips={[]} />
     </div>
   );
 }
