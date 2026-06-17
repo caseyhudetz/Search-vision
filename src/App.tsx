@@ -1634,24 +1634,22 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
 
   return (
     <div {...fade} style={{ ...fade.style, display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {/* Breadcrumb */}
-      <div style={{ padding: '14px 80px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
-          Completed Documents
-        </button>
-        <Icon name="chevron-right" size={12} color="var(--ink-text-secondary)" />
-        <span style={{ fontSize: 13, color: 'var(--ink-text-secondary)' }}>Worksheets</span>
-        <Icon name="chevron-right" size={12} color="var(--ink-text-secondary)" />
-        <span style={{ fontSize: 13, color: 'var(--ink-text-primary)', fontWeight: 500 }}>{viewCrumb}</span>
-      </div>
-
-      {/* Title row */}
-      <div style={{ padding: '16px 80px 0' }}>
+      {/* Page header — matches AgreementTableView .pageHeader padding */}
+      <div style={{ padding: '32px 80px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16 }}>
+          <button onClick={onBack} style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
+            Completed Documents
+          </button>
+          <Icon name="chevron-right" size={12} color="var(--ink-text-secondary)" />
+          <span style={{ fontSize: 13, color: 'var(--ink-text-secondary)' }}>Worksheets</span>
+          <Icon name="chevron-right" size={12} color="var(--ink-text-secondary)" />
+          <span style={{ fontSize: 13, color: 'var(--ink-text-primary)', fontWeight: 500 }}>{viewCrumb}</span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ink-purple-10, #f5f3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name={isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
           </div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 400, color: 'var(--ink-text-primary)', lineHeight: 1.2 }}>{viewTitle}</h1>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, color: 'var(--ink-text-primary)', lineHeight: 1.2 }}>{viewTitle}</h1>
         </div>
         <div style={{ marginTop: 8, marginLeft: 48, fontSize: 13, color: 'var(--ink-text-secondary)', display: 'flex', alignItems: 'center', gap: 12 }}>
           {viewMeta.split(' · ').map((part, i, arr) => (
@@ -1677,15 +1675,15 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
         </div>
       </div>
 
-      {/* Toolbar */}
-      <div style={{ padding: '16px 80px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+      {/* Toolbar — matches AgreementTableView .filterBar padding */}
+      <div style={{ padding: '16px 80px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
         <Button kind="secondary" size="small" startElement={<Icon name="plus" size={14} />}>Add agreements</Button>
         <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>Filters</Button>
         <Button kind="secondary" size="small" startElement={<Icon name="download" size={14} />}>Export</Button>
       </div>
 
-      {/* Table */}
-      <div style={{ flex: 1, overflowX: 'auto' }}>
+      {/* Table — matches AgreementTableView .tableWrapper margin */}
+      <div style={{ flex: 1, margin: '0 80px', minHeight: 0 }}>
         {isRenewalView ? (
           <DataTable
             columns={renewalColumns}
