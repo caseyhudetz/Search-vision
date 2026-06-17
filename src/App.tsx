@@ -167,15 +167,11 @@ function FadeIn({ children, keyProp: _keyProp }: { children: React.ReactNode; ke
    ═══════════════════════════════════════ */
 
 const SUGGESTED_QUESTIONS = [
-  { id: 'sq1', icon: 'document' as const, query: 'Beacon SOW', description: 'Find a specific document' },
-  { id: 'sq2', icon: 'person' as const, query: 'Acme', description: 'Find by party · resolves aliases across the index' },
-  { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'Upcoming renewals · 42 contracts, price increase clauses, auto-renewal terms' },
-  { id: 'sq4', icon: 'chart-bar' as const, query: 'Renewals in the next six months', description: 'Sell side · 7 renewals, $535K at risk, 3 pricing caps with open notice windows' },
-  { id: 'sq6', icon: 'building-person' as const, query: 'What is my total committed spend with Acme?', description: 'Vendor spend · committed spend across active Acme agreements' },
-  { id: 'sq7', icon: 'status-check' as const, query: 'Show me all software agreements with SLAs', description: 'SLA remedies · uptime thresholds, service credits, claim windows' },
+  { id: 'sq_current', icon: 'filter' as const, query: 'Show me contracts expiring in the next 6 months', description: 'Current state · applies filters and returns matching agreements' },
+  { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'Future state · AI-guided analysis, risk identification, and structured worksheet' },
 ];
 
-function SuggestionsDropdown({ onSelect }: { onSelect: (q: string) => void }) {
+function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) => void }) {
   return (
     <div style={{
       background: '#fff',
@@ -197,7 +193,7 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string) => void }) {
       {SUGGESTED_QUESTIONS.map((q, i) => (
         <button
           key={q.id}
-          onMouseDown={(e) => { e.preventDefault(); onSelect(q.query); }}
+          onMouseDown={(e) => { e.preventDefault(); onSelect(q.query, q.id); }}
           style={{
             display: 'flex',
             alignItems: 'flex-start',
@@ -217,10 +213,15 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string) => void }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--ink-text-primary)', lineHeight: 1.4 }}>{q.query}</span>
+              {q.id === 'sq_current' && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-05, #f5f5f7)', border: '1px solid var(--ink-border-color-default)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  Current state
+                </span>
+              )}
               {q.id === 'sq3' && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-green-80, #2f9e44)', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-green-80, #2f9e44)', flexShrink: 0 }} />
-                  Featured demo
+                  Future state
                 </span>
               )}
             </div>
@@ -1035,10 +1036,10 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && !cameFromAnswerBlock && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  We found <strong>42 agreements</strong> expiring in the next 6 months. The earliest expires on <strong>Jul 14</strong>, with a cluster of 11 coming due in September.
+                  Found <strong>42 agreements</strong> expiring in the next 6 months — the earliest on <strong>Jul 14</strong>, with a cluster of 11 coming due in September.
                 </Text>
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Each agreement can be checked for auto-renewal clauses and price increase provisions — the terms most likely to affect your negotiating position at renewal time. Want to see this as a structured view?
+                  To help plan renewals and avoid lapses, these agreements can be reviewed for auto-renewal clauses and upcoming price increases. Would you like to check for both?
                 </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
@@ -1054,13 +1055,13 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && convStep >= 1 && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Great. A structured comparison can be built that checks for the renewal terms that matter most across all 42 agreements — giving you a clear view of where you may be exposed before these contracts come up. Here's what we'd include:
+                  A comparison tracking view can be prepared for all 42 agreements. To analyze cost protection, the following fields will be extracted from each contract:
                 </Text>
                 <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {[
-                    { label: 'Notice Period', desc: "So you don't miss the window to cancel or renegotiate" },
-                    { label: 'Price Increase Rights', desc: 'Whether the vendor can raise rates at renewal' },
-                    { label: 'Percentage Cap', desc: "If there's a ceiling on how much they can increase" },
+                    { label: 'Notice Period', desc: 'The deadline required to cancel or renegotiate' },
+                    { label: 'Price Increase Rights', desc: 'Whether the vendor is legally permitted to raise rates' },
+                    { label: 'Percentage Cap', desc: 'The maximum allowable rate increase' },
                   ].map((col, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                       <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ink-purple-100, #4B47C8)', marginTop: 5, flexShrink: 0 }} />
@@ -1072,7 +1073,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                   ))}
                 </div>
                 <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
-                  Does that cover everything, or is there anything else worth tracking — like payment terms or the primary owner for each agreement?
+                  Should we also include <strong>Primary Contract Owner</strong> or <strong>Current Annual Spend</strong> to help assign next steps?
                 </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
@@ -1085,10 +1086,10 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && convStep >= 2 && !worksheetMode && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Perfect — <strong>Primary Owner</strong> added so you know who to contact for each negotiation. Here's what your table will include:
+                  Adding <strong>Primary Contract Owner</strong> to the view.
                 </Text>
                 <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {['Notice Period', 'Price Increase Rights', 'Percentage Cap', 'Primary Owner'].map((col, i) => (
+                  {['Notice Period', 'Price Increase Rights', 'Percentage Cap', 'Primary Contract Owner'].map((col, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: i > 0 ? '4px 0 0' : '0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
                       <Icon name="status-check" size={12} color="var(--ink-green-80, #2f9e44)" />
                       <Text size="sm">{col}</Text>
@@ -1098,13 +1099,13 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                 <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
                   <Inline gap="xs" align="center">
                     <IrisIcon />
-                    <Text size="sm" style={{ fontWeight: 600 }}>Ready to go</Text>
+                    <Text size="sm" style={{ fontWeight: 600 }}>Ready to build</Text>
                   </Inline>
                   <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
-                    All 42 agreements will be organized into a structured table you can sort, filter, and share with your team. Sort by renewal date to prioritize what's coming up first, or check the price cap column to identify where you have the most exposure.
+                    Criteria is ready to generate this tracking worksheet for all 42 agreements. Confirm to build the view.
                   </Text>
                   <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
-                    Create Table
+                    Generate Worksheet
                     <Icon name="arrow-right" size={13} color="#fff" />
                   </button>
                 </div>
@@ -1967,10 +1968,10 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
         </button>
       </div>
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 8, display: 'block' }}>
-        We found <strong>42 agreements</strong> expiring in the next 6 months. The earliest expires on <strong>Jul 14</strong>, with a cluster of 11 coming due in September.
+        Found <strong>42 agreements</strong> expiring in the next 6 months — the earliest on <strong>Jul 14</strong>, with a cluster of 11 coming due in September.
       </Text>
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
-        Each agreement can be checked for auto-renewal clauses and price increase provisions — the terms most likely to affect your negotiating position at renewal time. Want to see this as a structured view?
+        To help plan renewals and avoid lapses, these agreements can be reviewed for auto-renewal clauses and upcoming price increases. Would you like to check for both?
       </Text>
       <InlineFollowUp onContinue={handle} />
     </div>
@@ -3739,6 +3740,7 @@ export default function App() {
   const [insightsSidebarView, setInsightsSidebarView] = useState<InsightsSidebarView>('overview');
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
+  const [selectedQueryId, setSelectedQueryId] = useState('');
   const [showIrisSidebar, setShowIrisSidebar] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showWorksheetModal, setShowWorksheetModal] = useState(false);
@@ -4235,9 +4237,10 @@ export default function App() {
         />
         {isNavigatorView && showSuggestions && (
           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: '4px' }}>
-            <SuggestionsDropdown onSelect={(q) => {
+            <SuggestionsDropdown onSelect={(q, id) => {
               setSearch(q);
               setSubmittedSearch(q);
+              setSelectedQueryId(id);
               setShowSuggestions(false);
             }} />
           </div>
@@ -4251,14 +4254,39 @@ export default function App() {
         <DataTable columns={requestColumns} data={filteredRequests} getRowKey={(row) => row.id} stickyHeader showColumnControl rowHeight="tall" emptyMessage="No requests found" pagination={{ page: 1, pageSize: 10, totalItems: filteredRequests.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
       ) : isNavigatorView ? (
         <>
-          {submittedSearch && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
-          {submittedSearch && filteredNavigator.length < 687 && (
+          {submittedSearch && selectedQueryId === 'sq_current' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 12, borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text size="xs" color="secondary" style={{ fontWeight: 600 }}>Filters applied:</Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--ink-blue-10, #e8f3ff)', border: '1px solid var(--ink-blue-30, #b3d4ff)', borderRadius: 100, padding: '3px 10px 3px 8px' }}>
+                  <Icon name="building-person" size={12} color="var(--ink-blue-80, #1565c0)" />
+                  <span style={{ fontSize: 12, color: 'var(--ink-blue-80, #1565c0)', fontWeight: 500, marginLeft: 4 }}>Party: Acme</span>
+                  <button onClick={() => {}} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 0 4px', display: 'flex', alignItems: 'center' }}>
+                    <Icon name="close" size={10} color="var(--ink-blue-80, #1565c0)" />
+                  </button>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--ink-blue-10, #e8f3ff)', border: '1px solid var(--ink-blue-30, #b3d4ff)', borderRadius: 100, padding: '3px 10px 3px 8px' }}>
+                  <Icon name="calendar" size={12} color="var(--ink-blue-80, #1565c0)" />
+                  <span style={{ fontSize: 12, color: 'var(--ink-blue-80, #1565c0)', fontWeight: 500, marginLeft: 4 }}>Expiration: Next 6 months</span>
+                  <button onClick={() => {}} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 0 4px', display: 'flex', alignItems: 'center' }}>
+                    <Icon name="close" size={10} color="var(--ink-blue-80, #1565c0)" />
+                  </button>
+                </div>
+                <button onClick={() => { setSearch(''); setSubmittedSearch(''); setSelectedQueryId(''); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>Clear all</button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>42 agreements · Party: Acme · Expiring: next 6 months</span>
+              </div>
+            </div>
+          )}
+          {submittedSearch && selectedQueryId !== 'sq_current' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
+          {submittedSearch && selectedQueryId !== 'sq_current' && filteredNavigator.length < 687 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '3px 12px' }}>
                 <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {filteredNavigator.length} of 687</span>
               </div>
               <Text size="xs" color="secondary">agreements matching your search</Text>
-              <button onClick={() => { setSearch(''); setSubmittedSearch(''); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>Clear filter</button>
+              <button onClick={() => { setSearch(''); setSubmittedSearch(''); setSelectedQueryId(''); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>Clear filter</button>
             </div>
           )}
           <DataTable columns={navigatorColumns} data={filteredNavigator} getRowKey={(row) => row.id} selectable stickyHeader showColumnControl rowHeight="tall" emptyMessage="No completed documents" onRowClick={() => setShowAgreementDetail(true)} pagination={{ page: 1, pageSize: 50, totalItems: submittedSearch ? filteredNavigator.length : 687, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
