@@ -1882,7 +1882,7 @@ function CollapsedAnswerBar({ summary, onExpand, irisActive }: { summary: string
   );
 }
 
-function InlineFollowUp({ onContinue, chips }: { onContinue: (msg: string) => void; chips?: ActionChip[] }) {
+function InlineFollowUp({ onContinue, chips, prefill }: { onContinue: (msg: string) => void; chips?: ActionChip[]; prefill?: string }) {
   const [val, setVal] = useState('');
   const submit = () => { if (val.trim()) { onContinue(val.trim()); setVal(''); } };
   return (
@@ -1907,6 +1907,7 @@ function InlineFollowUp({ onContinue, chips }: { onContinue: (msg: string) => vo
           value={val}
           onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+          onFocus={() => { if (!val && prefill) setVal(prefill); }}
           placeholder="Ask a follow-up…"
           style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', fontFamily: 'inherit', color: 'var(--ink-text-primary)' }}
         />
@@ -1977,7 +1978,7 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
         I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for surprise price hikes?
       </Text>
-      <InlineFollowUp onContinue={handle} chips={[]} />
+      <InlineFollowUp onContinue={handle} chips={[]} prefill="Yes, I'm worried about price hikes" />
     </div>
   );
 }
