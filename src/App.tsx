@@ -196,7 +196,7 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
         textTransform: 'uppercase',
         color: 'var(--ink-text-secondary)',
       }}>
-        Suggested Questions
+        Demo Flows
       </div>
       {SUGGESTED_QUESTIONS.map((q, i) => (
         <button
