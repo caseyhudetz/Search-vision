@@ -175,7 +175,7 @@ function FadeIn({ children, keyProp: _keyProp }: { children: React.ReactNode; ke
    ═══════════════════════════════════════ */
 
 const SUGGESTED_QUESTIONS = [
-  { id: 'sq_current', icon: 'filter' as const, query: 'Show me contracts expiring in the next 6 months', description: 'Current state · applies filters and returns matching agreements' },
+  { id: 'sq_current', icon: 'person' as const, query: 'Acme', description: 'Current state · type a name, browse results, open a document' },
   { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'Future state · AI-guided analysis, risk identification, and structured worksheet' },
 ];
 
@@ -4298,33 +4298,8 @@ export default function App() {
         <DataTable columns={requestColumns} data={filteredRequests} getRowKey={(row) => row.id} stickyHeader showColumnControl rowHeight="tall" emptyMessage="No requests found" pagination={{ page: 1, pageSize: 10, totalItems: filteredRequests.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
       ) : isNavigatorView ? (
         <>
-          {submittedSearch && selectedQueryId === 'sq_current' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 12, borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 4 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Text size="xs" color="secondary" style={{ fontWeight: 600 }}>Filters applied:</Text>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--ink-blue-10, #e8f3ff)', border: '1px solid var(--ink-blue-30, #b3d4ff)', borderRadius: 100, padding: '3px 10px 3px 8px' }}>
-                  <Icon name="building-person" size={12} color="var(--ink-blue-80, #1565c0)" />
-                  <span style={{ fontSize: 12, color: 'var(--ink-blue-80, #1565c0)', fontWeight: 500, marginLeft: 4 }}>Party: Acme</span>
-                  <button onClick={() => {}} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 0 4px', display: 'flex', alignItems: 'center' }}>
-                    <Icon name="close" size={10} color="var(--ink-blue-80, #1565c0)" />
-                  </button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--ink-blue-10, #e8f3ff)', border: '1px solid var(--ink-blue-30, #b3d4ff)', borderRadius: 100, padding: '3px 10px 3px 8px' }}>
-                  <Icon name="calendar" size={12} color="var(--ink-blue-80, #1565c0)" />
-                  <span style={{ fontSize: 12, color: 'var(--ink-blue-80, #1565c0)', fontWeight: 500, marginLeft: 4 }}>Expiration: Next 6 months</span>
-                  <button onClick={() => {}} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 0 4px', display: 'flex', alignItems: 'center' }}>
-                    <Icon name="close" size={10} color="var(--ink-blue-80, #1565c0)" />
-                  </button>
-                </div>
-                <button onClick={() => { setSearch(''); setSubmittedSearch(''); setSelectedQueryId(''); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>Clear all</button>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>42 agreements · Party: Acme · Expiring: next 6 months</span>
-              </div>
-            </div>
-          )}
           {submittedSearch && selectedQueryId !== 'sq_current' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
-          {submittedSearch && selectedQueryId !== 'sq_current' && filteredNavigator.length < 687 && (
+          {submittedSearch && filteredNavigator.length < 687 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '3px 12px' }}>
                 <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {filteredNavigator.length} of 687</span>
