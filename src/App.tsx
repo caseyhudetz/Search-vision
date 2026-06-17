@@ -271,6 +271,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   const [sidebarWidth, setSidebarWidth] = useState(420);
   const [initialReady, setInitialReady] = useState(false);
   const [cameFromAnswerBlock] = useState(!!_isRenewalInit);
+  const [chipsReady, setChipsReady] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
@@ -321,6 +322,13 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
     const t = setTimeout(() => setInitialReady(true), delay);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (isThinking) { setChipsReady(false); return; }
+    if (!initialReady) return;
+    const t = setTimeout(() => setChipsReady(true), 500);
+    return () => clearTimeout(t);
+  }, [isThinking, initialReady]);
 
   const q = question.toLowerCase();
   const fq = (followUp || '').toLowerCase();
@@ -375,7 +383,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </button>
         </div>
       )}
-      {isRenewalScanFlow && convStep === 0 && userMessages.length === 0 && !isThinking && initialReady && (
+      {isRenewalScanFlow && convStep === 0 && userMessages.length === 0 && chipsReady && (
         <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
           {[
             'Check for both risks',
@@ -394,7 +402,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           ))}
         </div>
       )}
-      {isRenewalScanFlow && convStep === 1 && userMessages.length === 1 && !isThinking && (
+      {isRenewalScanFlow && convStep === 1 && userMessages.length === 1 && chipsReady && (
         <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
           {[
             'Add Primary Owner',
@@ -1677,7 +1685,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
       </div>
 
       {/* Table */}
-      <div style={{ flex: 1, overflowX: 'auto', padding: '0 32px' }}>
+      <div style={{ flex: 1, overflowX: 'auto' }}>
         {isRenewalView ? (
           <DataTable
             columns={renewalColumns}
@@ -1686,6 +1694,8 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
             stickyHeader
             rowHeight="tall"
             selectable
+            showColumnControl
+            pagination={{ page: 1, pageSize: 50, totalItems: renewalRows.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }}
           />
         ) : (
           <DataTable
@@ -1695,6 +1705,8 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
             stickyHeader
             rowHeight="tall"
             selectable
+            showColumnControl
+            pagination={{ page: 1, pageSize: 50, totalItems: worksheetRows.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }}
           />
         )}
       </div>
@@ -1982,6 +1994,8 @@ function RenewalsAnswerBlock({ onContinue, onBuildWorksheet }: { onContinue: (ms
 function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onContinue: (msg: string) => void; onBuildWorksheet: (type: string) => void }) {
   const [collapsed, setCollapsed] = useState(false);
   const [collapsedViaIris, setCollapsedViaIris] = useState(false);
+  const [chipsReady, setChipsReady] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setChipsReady(true), 700); return () => clearTimeout(t); }, []);
   const handle = (msg: string) => { setCollapsed(true); setCollapsedViaIris(true); onContinue(msg); };
   if (collapsed) return <CollapsedAnswerBar summary="42 agreements expiring in 6 months — earliest Jul 14, cluster of 11 in September" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
   return (
@@ -2001,11 +2015,11 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
         To help plan renewals and avoid lapses, these agreements can be reviewed for auto-renewal clauses and upcoming price increases. Would you like to check for both?
       </Text>
-      <InlineFollowUp onContinue={handle} chips={[
+      <InlineFollowUp onContinue={handle} chips={chipsReady ? [
         { label: 'Check for both risks', onClick: () => handle('Check for both risks') },
         { label: 'Check auto-renewals only', onClick: () => handle('Check auto-renewals only') },
         { label: 'Filter by price increases', onClick: () => handle('Filter by price increases') },
-      ]} />
+      ] : []} />
     </div>
   );
 }
