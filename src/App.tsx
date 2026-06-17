@@ -97,6 +97,14 @@ const tableRowStaggerStyles = `
   animation: shimmer 1.4s infinite linear;
   border-radius: 4px;
 }
+
+@keyframes chipFadeIn {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.chip-fade-in {
+  animation: chipFadeIn 320ms cubic-bezier(0.33, 0, 0.67, 1) both;
+}
 `;
 
 /* ═══════════════════════════════════════
@@ -384,7 +392,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
         </div>
       )}
       {isRenewalScanFlow && convStep === 0 && userMessages.length === 0 && chipsReady && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+        <div className="chip-fade-in" style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
           {[
             'Check for both risks',
             'Check auto-renewals only',
@@ -403,7 +411,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
         </div>
       )}
       {isRenewalScanFlow && convStep === 1 && userMessages.length === 1 && chipsReady && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+        <div className="chip-fade-in" style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
           {[
             'Add Primary Owner',
             'Add Current Annual Spend',
@@ -1382,8 +1390,8 @@ const WORKSHEET_LOADING_LABELS: Record<string, { title: string; steps: string[] 
     steps: ['Reading MSA, SOW & DPA agreements', 'Extracting committed spend and seat usage', 'Pulling MFN clause language from the MSA'],
   },
   'renewal-scan': {
-    title: 'Building your renewal table…',
-    steps: ['Scanning 42 expiring agreements', 'Extracting notice periods and price increase rights', 'Identifying percentage caps and primary owners'],
+    title: 'Setting up your renewal tracker…',
+    steps: ['Scanning 42 expiring agreements', 'Checking notice periods and price increase rights', 'Identifying percentage caps and primary owners'],
   },
   'vendor-exposure': {
     title: 'Vendor Exposure Worksheet',
@@ -1398,7 +1406,7 @@ function WorksheetLoadingOverlay({ worksheetType }: { worksheetType: string }) {
       <div style={{ background: '#fff', borderRadius: 16, padding: '40px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, maxWidth: 420, width: '90%', boxShadow: '0 24px 64px rgba(0,0,0,0.18)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <IrisIcon />
-          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink-purple-100, #4B47C8)' }}>Building your worksheet…</span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink-purple-100, #4B47C8)' }}>{info.title}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
           {info.steps.map((step, i) => (
@@ -1627,7 +1635,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
   return (
     <div {...fade} style={{ ...fade.style, display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       {/* Breadcrumb */}
-      <div style={{ padding: '14px 32px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ padding: '14px 80px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
         <button onClick={onBack} style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
           Completed Documents
         </button>
@@ -1638,7 +1646,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
       </div>
 
       {/* Title row */}
-      <div style={{ padding: '16px 32px 0' }}>
+      <div style={{ padding: '16px 80px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ink-purple-10, #f5f3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name={isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
@@ -1670,7 +1678,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
       </div>
 
       {/* Toolbar */}
-      <div style={{ padding: '16px 32px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+      <div style={{ padding: '16px 80px 12px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
         <Button kind="secondary" size="small" startElement={<Icon name="plus" size={14} />}>Add agreements</Button>
         <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>Filters</Button>
         <Button kind="secondary" size="small" startElement={<Icon name="download" size={14} />}>Export</Button>
@@ -1915,7 +1923,7 @@ function InlineFollowUp({ onContinue, chips }: { onContinue: (msg: string) => vo
   return (
     <div style={{ marginTop: 16 }}>
       {chips && chips.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div className="chip-fade-in" style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
           {chips.map((chip, i) => (
             <button
               key={i}
