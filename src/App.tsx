@@ -335,9 +335,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   const isPartyFlow = q.trim() === 'acme';
   const isRenewalScanFlow = (q.includes('6 month') || q.includes('six month')) && (q.includes('expir') || q.includes('renew') || q.includes('vendor'));
 
-  const handleSend = () => {
-    if (!inputValue.trim()) return;
-    const msg = inputValue.trim();
+  const sendMessage = (msg: string) => {
     setUserMessages(prev => [...prev, msg]);
     setInputValue('');
     setIsThinking(true);
@@ -346,6 +344,11 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
       if ((isPriceRaiseFlow || isVendorExposureFlow || isSLAFlow || isPartyFlow) && convStep === 0) setConvStep(1);
       if (isRenewalScanFlow && convStep < 2) setConvStep(convStep + 1);
     }, 1300);
+  };
+
+  const handleSend = () => {
+    if (!inputValue.trim()) return;
+    sendMessage(inputValue.trim());
   };
 
   const irisInputArea = (
@@ -372,26 +375,43 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </button>
         </div>
       )}
-      {isRenewalScanFlow && convStep === 0 && userMessages.length === 0 && !isThinking && (
-        <div style={{ marginBottom: 8 }}>
-          <button
-            onMouseDown={(e) => { e.preventDefault(); setInputValue("Yes, definitely. I need to see if we're protected from surprise price hikes."); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 16, padding: '6px 12px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            <Icon name="reply" size={13} color="var(--ink-text-secondary)" />
-            Yes, definitely — help me spot the risky ones
-          </button>
+      {isRenewalScanFlow && convStep === 0 && userMessages.length === 0 && !isThinking && initialReady && (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {[
+            'Check for both risks',
+            'Check auto-renewals only',
+            'Filter by price increases',
+          ].map((label) => (
+            <button
+              key={label}
+              onMouseDown={(e) => { e.preventDefault(); sendMessage(label); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '6px 14px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       )}
       {isRenewalScanFlow && convStep === 1 && userMessages.length === 1 && !isThinking && (
-        <div style={{ marginBottom: 8 }}>
-          <button
-            onMouseDown={(e) => { e.preventDefault(); setInputValue("Let's add 'Primary Owner' so I know who to contact if I need to renegotiate."); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 16, padding: '6px 12px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            <Icon name="reply" size={13} color="var(--ink-text-secondary)" />
-            Let&apos;s add &apos;Primary Owner&apos; too
-          </button>
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {[
+            'Add Primary Owner',
+            'Add Current Annual Spend',
+            'Add both fields',
+            'Keep as is',
+          ].map((label) => (
+            <button
+              key={label}
+              onMouseDown={(e) => { e.preventDefault(); sendMessage(label); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '6px 14px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       )}
       {isSLAFlow && convStep === 0 && (
@@ -1104,10 +1124,18 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                   <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
                     Criteria is ready to generate this tracking worksheet for all 42 agreements. Confirm to build the view.
                   </Text>
-                  <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
-                    Generate Worksheet
-                    <Icon name="arrow-right" size={13} color="#fff" />
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Generate Worksheet
+                      <Icon name="arrow-right" size={13} color="#fff" />
+                    </button>
+                    <button style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 500, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+                    >
+                      Change criteria
+                    </button>
+                  </div>
                 </div>
               </Stack>
             )}
@@ -1973,7 +2001,11 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
         To help plan renewals and avoid lapses, these agreements can be reviewed for auto-renewal clauses and upcoming price increases. Would you like to check for both?
       </Text>
-      <InlineFollowUp onContinue={handle} />
+      <InlineFollowUp onContinue={handle} chips={[
+        { label: 'Check for both risks', onClick: () => handle('Check for both risks') },
+        { label: 'Check auto-renewals only', onClick: () => handle('Check auto-renewals only') },
+        { label: 'Filter by price increases', onClick: () => handle('Filter by price increases') },
+      ]} />
     </div>
   );
 }
