@@ -1026,18 +1026,12 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
         <>
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <IrisUserBubble text={question} />
-            <Inline gap="xs" align="center">
-              <Text size="xs" color="secondary">Scanned 42 expiring agreements</Text>
-              <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
-            </Inline>
-            {/* Answer block path: user's reply sits above the thinking bubble */}
-            {cameFromAnswerBlock && userMessages.length > 0 && <IrisUserBubble text={userMessages[0]} />}
 
-            {/* Initial thinking — before first AI response loads */}
-            {!initialReady && <IrisThinkingBubble />}
+            {/* Thinking before step 0 loads (direct open only) */}
+            {!cameFromAnswerBlock && !initialReady && <IrisThinkingBubble />}
 
-            {/* Step 0 content — only shown on direct open, not from answer block */}
-            {initialReady && !cameFromAnswerBlock && (
+            {/* Step 0 AI response — shown immediately for cameFromAnswerBlock, after load for direct */}
+            {(cameFromAnswerBlock || initialReady) && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
                   I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for surprise price hikes?
@@ -1049,9 +1043,12 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               </Stack>
             )}
 
-            {/* Normal path: step 0→1 user message + transition thinking */}
-            {initialReady && !cameFromAnswerBlock && userMessages.length > 0 && <IrisUserBubble text={userMessages[0]} />}
-            {initialReady && !cameFromAnswerBlock && isThinking && convStep === 0 && <IrisThinkingBubble />}
+            {/* User's step-0 reply */}
+            {userMessages.length > 0 && (cameFromAnswerBlock || initialReady) && <IrisUserBubble text={userMessages[0]} />}
+
+            {/* Thinking while step 1 loads */}
+            {cameFromAnswerBlock && !initialReady && <IrisThinkingBubble />}
+            {!cameFromAnswerBlock && initialReady && isThinking && convStep === 0 && <IrisThinkingBubble />}
 
             {initialReady && convStep >= 1 && (
               <Stack gap="small">
