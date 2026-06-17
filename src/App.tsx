@@ -358,7 +358,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
     setTimeout(() => {
       setIsThinking(false);
       if ((isPriceRaiseFlow || isVendorExposureFlow || isSLAFlow || isPartyFlow) && convStep === 0) setConvStep(1);
-      if (isRenewalScanFlow && convStep < 2) setConvStep(convStep + 1);
+      if (isRenewalScanFlow && convStep < 3) setConvStep(convStep + 1);
     }, 1300);
   };
 
@@ -393,11 +393,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
       )}
       {isRenewalScanFlow && convStep === 0 && userMessages.length === 0 && chipsReady && (
         <div className="chip-fade-in" style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {[
-            'Check for both risks',
-            'Check auto-renewals only',
-            'Filter by price increases',
-          ].map((label) => (
+          {["Yes, I'm worried about price hikes"].map((label) => (
             <button
               key={label}
               onMouseDown={(e) => { e.preventDefault(); sendMessage(label); }}
@@ -412,12 +408,22 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
       )}
       {isRenewalScanFlow && convStep === 1 && userMessages.length === 1 && chipsReady && (
         <div className="chip-fade-in" style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {[
-            'Add Primary Owner',
-            'Add Current Annual Spend',
-            'Add both fields',
-            'Keep as is',
-          ].map((label) => (
+          {["Yes, let's do that."].map((label) => (
+            <button
+              key={label}
+              onMouseDown={(e) => { e.preventDefault(); sendMessage(label); }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '6px 14px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {isRenewalScanFlow && convStep === 2 && userMessages.length === 2 && chipsReady && (
+        <div className="chip-fade-in" style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {['Add Primary Owner'].map((label) => (
             <button
               key={label}
               onMouseDown={(e) => { e.preventDefault(); sendMessage(label); }}
@@ -1072,10 +1078,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && !cameFromAnswerBlock && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Found <strong>42 agreements</strong> expiring in the next 6 months — the earliest on <strong>Jul 14</strong>, with a cluster of 11 coming due in September.
-                </Text>
-                <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  To help plan renewals and avoid lapses, these agreements can be reviewed for auto-renewal clauses and upcoming price increases. Would you like to check for both?
+                  I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for surprise price hikes?
                 </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
@@ -1091,13 +1094,27 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && convStep >= 1 && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  A comparison tracking view can be prepared for all 42 agreements. To analyze cost protection, the following fields will be extracted from each contract:
+                  Understood. It's hard to spot that risk just by looking at file names. To get a clear view, I need to pull key details—like renewal deadlines and price protection—out of these documents and line them up side-by-side in a comparison table. Does that sound like the right approach for you?
                 </Text>
-                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+            {initialReady && userMessages.length > 1 && <IrisUserBubble text={userMessages[1]} />}
+            {initialReady && isThinking && convStep === 1 && <IrisThinkingBubble />}
+            {initialReady && convStep >= 2 && (
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Great! Since we are aligned on the goal, let's define the structure. To give you the best view, I suggest we include:
+                </Text>
+                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {[
-                    { label: 'Notice Period', desc: 'The deadline required to cancel or renegotiate' },
-                    { label: 'Price Increase Rights', desc: 'Whether the vendor is legally permitted to raise rates' },
-                    { label: 'Percentage Cap', desc: 'The maximum allowable rate increase' },
+                    { label: 'Vendor Name', desc: 'The contracting party' },
+                    { label: 'Expiration Date', desc: 'When the agreement term ends' },
+                    { label: 'Notice Period', desc: 'Deadline to cancel or renegotiate' },
+                    { label: 'Price Cap', desc: 'Maximum allowable rate increase' },
                   ].map((col, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                       <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ink-purple-100, #4B47C8)', marginTop: 5, flexShrink: 0 }} />
@@ -1108,50 +1125,38 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                     </div>
                   ))}
                 </div>
-                <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
-                  Should we also include <strong>Primary Contract Owner</strong> or <strong>Current Annual Spend</strong> to help assign next steps?
-                </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
                 </Inline>
               </Stack>
             )}
-            {initialReady && userMessages.length > 1 && <IrisUserBubble text={userMessages[1]} />}
-            {initialReady && isThinking && convStep === 1 && <IrisThinkingBubble />}
-            {initialReady && convStep >= 2 && !worksheetMode && (
+            {initialReady && userMessages.length > 2 && <IrisUserBubble text={userMessages[2]} />}
+            {initialReady && isThinking && convStep === 2 && <IrisThinkingBubble />}
+            {initialReady && convStep >= 3 && !worksheetMode && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Adding <strong>Primary Contract Owner</strong> to the view.
+                  Good call. I've added that to the plan. I'm ready to generate this comparison table. Shall I pull the data now?
                 </Text>
                 <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {['Notice Period', 'Price Increase Rights', 'Percentage Cap', 'Primary Contract Owner'].map((col, i) => (
+                  {['Vendor Name', 'Expiration Date', 'Notice Period', 'Price Cap', 'Primary Owner'].map((col, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: i > 0 ? '4px 0 0' : '0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
                       <Icon name="status-check" size={12} color="var(--ink-green-80, #2f9e44)" />
                       <Text size="sm">{col}</Text>
                     </div>
                   ))}
                 </div>
-                <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
-                  <Inline gap="xs" align="center">
-                    <IrisIcon />
-                    <Text size="sm" style={{ fontWeight: 600 }}>Your renewal tracker is ready</Text>
-                  </Inline>
-                  <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
-                    All 42 agreements will be organized into a sortable view so you can prioritize what's expiring first, spot contracts without price protection, and assign owners before renewals come due.
-                  </Text>
-                  <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
-                    Start my renewal review
-                    <Icon name="arrow-right" size={13} color="#fff" />
-                  </button>
-                </div>
+                <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
+                  Generate Table
+                  <Icon name="arrow-right" size={13} color="#fff" />
+                </button>
               </Stack>
             )}
-            {initialReady && convStep >= 2 && worksheetMode && (
+            {initialReady && convStep >= 3 && worksheetMode && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
                   <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
-                  <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Renewal table built — 42 agreements</Text>
+                  <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Comparison table built — 42 agreements</Text>
                 </div>
                 <Stack gap="small">
                   <Text size="sm" style={{ lineHeight: 1.65 }}>Your table is ready. Want to refine it?</Text>
@@ -1995,7 +2000,7 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
   const [chipsReady, setChipsReady] = useState(false);
   useEffect(() => { const t = setTimeout(() => setChipsReady(true), 700); return () => clearTimeout(t); }, []);
   const handle = (msg: string) => { setCollapsed(true); setCollapsedViaIris(true); onContinue(msg); };
-  if (collapsed) return <CollapsedAnswerBar summary="42 agreements expiring in 6 months — earliest Jul 14, cluster of 11 in September" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
+  if (collapsed) return <CollapsedAnswerBar summary="42 agreements expiring soon — identifying price hike risk" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
   return (
     <div style={{ background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '16px 20px', marginBottom: 20 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -2007,16 +2012,11 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
           <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
         </button>
       </div>
-      <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 8, display: 'block' }}>
-        Found <strong>42 agreements</strong> expiring in the next 6 months — the earliest on <strong>Jul 14</strong>, with a cluster of 11 coming due in September.
-      </Text>
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
-        To help plan renewals and avoid lapses, these agreements can be reviewed for auto-renewal clauses and upcoming price increases. Would you like to check for both?
+        I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for surprise price hikes?
       </Text>
       <InlineFollowUp onContinue={handle} chips={chipsReady ? [
-        { label: 'Check for both risks', onClick: () => handle('Check for both risks') },
-        { label: 'Check auto-renewals only', onClick: () => handle('Check auto-renewals only') },
-        { label: 'Filter by price increases', onClick: () => handle('Filter by price increases') },
+        { label: "Yes, I'm worried about price hikes", onClick: () => handle("Yes, I'm worried about price hikes") },
       ] : []} />
     </div>
   );
