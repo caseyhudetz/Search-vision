@@ -1127,23 +1127,15 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                 <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
                   <Inline gap="xs" align="center">
                     <IrisIcon />
-                    <Text size="sm" style={{ fontWeight: 600 }}>Ready to build</Text>
+                    <Text size="sm" style={{ fontWeight: 600 }}>Your renewal tracker is ready</Text>
                   </Inline>
                   <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
-                    Criteria is ready to generate this tracking worksheet for all 42 agreements. Confirm to build the view.
+                    All 42 agreements will be organized into a sortable view so you can prioritize what's expiring first, spot contracts without price protection, and assign owners before renewals come due.
                   </Text>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      Generate Worksheet
-                      <Icon name="arrow-right" size={13} color="#fff" />
-                    </button>
-                    <button style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 500, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-                    >
-                      Change criteria
-                    </button>
-                  </div>
+                  <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
+                    Start my renewal review
+                    <Icon name="arrow-right" size={13} color="#fff" />
+                  </button>
                 </div>
               </Stack>
             )}
