@@ -1460,7 +1460,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
       header: 'Renewal date',
       cell: (row: typeof renewalRows[0]) => {
         const isUrgent = row.renewalDate.includes('Jul') || row.renewalDate.includes('Aug');
-        return <span style={{ fontSize: 13, fontWeight: isUrgent ? 600 : 400, color: isUrgent ? 'var(--ink-red-80, #c92a2a)' : 'var(--ink-text-primary)' }}>{row.renewalDate}</span>;
+        return <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--ink-text-primary)' }}>{row.renewalDate}</span>;
       },
       width: '130px',
     },
