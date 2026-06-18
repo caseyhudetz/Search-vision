@@ -1481,7 +1481,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
           <span>Percentage Cap</span>
         </span>
       ),
-      cell: (row: typeof renewalRows[0]) => aiCell(row.cap, '55%', row.cap === 'Unlimited' ? 'risk' : undefined),
+      cell: (row: typeof renewalRows[0]) => aiCell(row.cap, '55%'),
       width: '130px',
     },
     {
