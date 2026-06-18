@@ -1079,7 +1079,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                     { label: 'Price Cap', desc: 'Maximum allowable rate increase' },
                   ].map((col, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--ink-purple-100, #4B47C8)', marginTop: 5, flexShrink: 0 }} />
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-text-secondary)', marginTop: 6, flexShrink: 0 }} />
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', lineHeight: 1.4 }}>{col.label}</span>
                         <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', lineHeight: 1.4 }}>{col.desc}</span>
