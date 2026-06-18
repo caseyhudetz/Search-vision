@@ -1084,6 +1084,9 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                     </div>
                   ))}
                 </div>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Anything else or should we continue to build the table for analysis?
+                </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
