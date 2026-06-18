@@ -351,6 +351,17 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   const isPartyFlow = q.trim() === 'acme';
   const isRenewalScanFlow = (q.includes('6 month') || q.includes('six month')) && (q.includes('expir') || q.includes('renew') || q.includes('vendor'));
 
+  useEffect(() => {
+    if (!isRenewalScanFlow || isThinking) return;
+    setInputValue(prev => {
+      if (prev) return prev;
+      if (convStep === 0 && userMessages.length === 0) return "Yes, I'm worried about price hikes";
+      if (convStep === 1 && userMessages.length === 1) return "Yes, let's do that.";
+      if (convStep === 2 && userMessages.length === 2) return 'Add Primary Owner';
+      return prev;
+    });
+  }, [convStep, isThinking]);
+
   const sendMessage = (msg: string) => {
     setUserMessages(prev => [...prev, msg]);
     setInputValue('');
@@ -425,13 +436,6 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-          onFocus={() => {
-            if (!inputValue && isRenewalScanFlow) {
-              if (convStep === 0 && userMessages.length === 0) setInputValue("Yes, I'm worried about price hikes");
-              else if (convStep === 1 && userMessages.length === 1) setInputValue("Yes, let's do that.");
-              else if (convStep === 2 && userMessages.length === 2) setInputValue('Add Primary Owner');
-            }
-          }}
           placeholder="Ask a question..."
           style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
         />
