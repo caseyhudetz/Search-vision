@@ -427,7 +427,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
           onClick={() => {
             if (!inputValue && isRenewalScanFlow) {
-              if (convStep === 0 && userMessages.length === 0) setInputValue("Yes, I'm worried about price hikes");
+              if (convStep === 0 && userMessages.length === 0) setInputValue("I want to identify which agreements might increase in price and by how much");
               else if (convStep === 1 && userMessages.length === 1) setInputValue("Yes, let's do that.");
               else if (convStep === 2 && userMessages.length === 2) setInputValue('Add Primary Owner');
             }
@@ -1034,7 +1034,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {(cameFromAnswerBlock || initialReady) && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for <strong>surprise price hikes</strong>?
+                  I've found <strong>42 agreements</strong> hitting their expiration dates soon. What else would you like to understand about these agreements?
                 </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
@@ -1982,9 +1982,9 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
         </button>
       </div>
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
-        I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for surprise price hikes?
+        I've found <strong>42 agreements</strong> hitting their expiration dates soon. What else would you like to understand about these agreements?
       </Text>
-      <InlineFollowUp onContinue={handle} chips={[]} prefill="Yes, I'm worried about price hikes" />
+      <InlineFollowUp onContinue={handle} chips={[]} prefill="I want to identify which agreements might increase in price and by how much" />
     </div>
   );
 }
