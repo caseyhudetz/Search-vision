@@ -1034,7 +1034,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {(cameFromAnswerBlock || initialReady) && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for surprise price hikes?
+                  I've found <strong>42 agreements</strong> hitting their expiration dates soon. Would you like to start by identifying which ones carry the most risk for <strong>surprise price hikes</strong>?
                 </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
@@ -1053,7 +1053,10 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && convStep >= 1 && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Understood. It's hard to spot that risk just by looking at file names. To get a clear view, I need to pull key details—like renewal deadlines and price protection—out of these documents and line them up side-by-side in a comparison table. Does that sound like the right approach for you?
+                  Understood. It's hard to spot that risk just by looking at file names. To get a clear view, I need to pull key details—like <strong>renewal deadlines</strong> and <strong>price protection</strong>—out of these documents and line them up side-by-side in a <strong>comparison table</strong>.
+                </Text>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Does that sound like the right approach for you?
                 </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
@@ -1066,7 +1069,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && convStep >= 2 && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Great! Since we are aligned on the goal, let's define the structure. To give you the best view, I suggest we include:
+                  Great! Since we are aligned on the goal, let's define the <strong>structure</strong>. To give you the best view, I suggest we include:
                 </Text>
                 <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {[
@@ -1098,7 +1101,10 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && convStep >= 3 && !worksheetMode && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Good call. I've added that to the plan. I'm ready to generate this comparison table. Shall I pull the data now?
+                  Good call. I've added <strong>Primary Owner</strong> to the plan. I'm ready to generate this <strong>comparison table</strong>.
+                </Text>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Shall I pull the data now?
                 </Text>
                 <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {['Vendor Name', 'Expiration Date', 'Notice Period', 'Price Cap', 'Primary Owner'].map((col, i) => (
