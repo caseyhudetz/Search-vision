@@ -1127,20 +1127,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                   <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Comparison table built — 42 agreements</Text>
                 </div>
                 <Stack gap="small">
-                  <Text size="sm" style={{ lineHeight: 1.65 }}>Your table is ready. Want to refine it?</Text>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[
-                      { label: 'Flag contracts with no price cap', icon: 'filter' as const },
-                      { label: 'Add a column for auto-renewal language', icon: 'plus' as const },
-                      { label: 'Sort by earliest notice deadline', icon: 'calendar' as const },
-                      { label: 'Show only contracts over $50K', icon: 'filter' as const },
-                    ].map((chip, i) => (
-                      <button key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: '1px solid var(--ink-border-color-default)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-                        <Icon name={chip.icon} size={13} color="var(--ink-purple-100, #4B47C8)" />
-                        {chip.label}
-                      </button>
-                    ))}
-                  </div>
+                  <Text size="sm" style={{ lineHeight: 1.65 }}>Your table is ready. Is there a specific vendor or deadline you'd like to focus on first?</Text>
                 </Stack>
               </div>
             )}
