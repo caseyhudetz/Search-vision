@@ -1053,7 +1053,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {initialReady && convStep >= 1 && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Understood. It's hard to spot that risk just by looking at file names. To get a clear view, I need to pull key details—like <strong>renewal deadlines</strong> and <strong>price protection</strong>—out of these documents and line them up side-by-side in a <strong>comparison table</strong>.
+                  To help with this, I can extract key details from the agreements—specifically <strong>renewal deadlines</strong> and <strong>price protection</strong>—and map them out in a side-by-side <strong>comparison table</strong>.
                 </Text>
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
                   Does that sound like the right approach for you?
