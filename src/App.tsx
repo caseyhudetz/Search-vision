@@ -180,7 +180,7 @@ function FadeIn({ children, keyProp: _keyProp }: { children: React.ReactNode; ke
    ═══════════════════════════════════════ */
 
 const SUGGESTED_QUESTIONS = [
-  { id: 'sq_current', icon: 'person' as const, query: 'Acme', description: 'Current state · type a name, browse results, open a document' },
+  { id: 'sq_current', icon: 'person' as const, query: 'Acme', description: 'Simple request · search by company or person name' },
   { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'Future state · AI-guided analysis, risk identification, and structured worksheet' },
   { id: 'sq_autorenew', icon: 'bell' as const, query: 'Alert me to contracts at risk of auto-renewing', description: 'Future state v2 · Proactive monitoring, risk scoring, and recommended actions' },
 ];
@@ -227,11 +227,6 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--ink-text-primary)', lineHeight: 1.4 }}>{q.query}</span>
-              {q.id === 'sq_current' && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-05, #f5f5f7)', border: '1px solid var(--ink-border-color-default)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  Current state
-                </span>
-              )}
               {q.id === 'sq3' && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-green-80, #2f9e44)', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-green-80, #2f9e44)', flexShrink: 0 }} />
@@ -2152,8 +2147,8 @@ function WorksheetModal({ onClose, worksheetType = 'renewals' }: { onClose: () =
 function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [exiting, setExiting] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [selectedMsg, setSelectedMsg] = useState<string | null>(null);
   const [activeChip, setActiveChip] = useState<string | null>(null);
 
   useEffect(() => {
@@ -2169,20 +2164,13 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
   ];
 
   const handleChip = (msg: string) => {
-    if (exiting) return;
+    if (collapsed) return;
     setActiveChip(msg);
-    setExiting(true);
+    setSelectedMsg(msg);
+    // collapse card, then open Iris with slight overlap
+    setTimeout(() => setCollapsed(true), 80);
     setTimeout(() => onChipSelect(msg), 150);
-    setTimeout(() => setDismissed(true), 400);
   };
-
-  if (dismissed) return null;
-
-  const cardOpacity = !visible ? 0 : exiting ? 0 : 1;
-  const cardTranslate = !visible ? 'translateY(6px)' : exiting ? 'translateY(-8px)' : 'translateY(0)';
-  const cardTransition = (!visible || exiting)
-    ? 'opacity 200ms ease, transform 200ms ease'
-    : 'opacity 300ms cubic-bezier(0.33, 0, 0.67, 1), transform 300ms cubic-bezier(0.35, 0, 0.2, 1)';
 
   return (
     <div style={{
@@ -2190,57 +2178,53 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
       background: '#fff',
       border: '1px solid var(--ink-border-color-subtle)',
       borderRadius: 12,
-      opacity: cardOpacity,
-      transform: cardTranslate,
-      transition: cardTransition,
+      overflow: 'hidden',
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'translateY(0)' : 'translateY(6px)',
+      transition: 'opacity 300ms cubic-bezier(0.33, 0, 0.67, 1), transform 300ms cubic-bezier(0.35, 0, 0.2, 1)',
     }}>
 
-      {/* Card body — always visible */}
-      <div style={{ padding: '20px 24px 18px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+      {/* Collapsed state — shown after chip selection, while Iris is open */}
+      <div style={{
+        maxHeight: collapsed ? '52px' : '0px',
+        opacity: collapsed ? 1 : 0,
+        overflow: 'hidden',
+        transition: 'max-height 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
+      }}>
+        <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <IrisIcon />
-          <Text size="xs" color="secondary">Iris · 4 agreements found for "Acme"</Text>
-        </div>
-        <div style={{ fontSize: 17, fontWeight: 500, color: 'var(--ink-text-primary)', marginBottom: 4, lineHeight: 1.4 }}>
-          You're looking at contracts with <strong>Acme Corp</strong>
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', marginBottom: 16 }}>
-          What would you like to explore?
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-          {chips.map(chip => (
-            <button
-              key={chip.label}
-              onClick={() => handleChip(chip.msg)}
-              style={{
-                display: 'inline-flex', alignItems: 'center',
-                background: expanded ? '#fff' : 'transparent',
-                border: `1px solid ${expanded ? 'var(--ink-border-color-default)' : 'var(--ink-border-color-subtle)'}`,
-                borderRadius: 100, padding: '6px 14px', fontSize: 13,
-                color: expanded ? 'var(--ink-text-primary)' : 'var(--ink-text-secondary)',
-                cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
-                opacity: expanded ? 1 : 0.7,
-                transition: 'background 280ms ease, border-color 280ms ease, color 280ms ease, opacity 280ms ease, transform 100ms ease',
-                transform: activeChip === chip.msg ? 'scale(0.95)' : 'scale(1)',
-              }}
-              onMouseEnter={(e) => { if (expanded) (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-              onMouseLeave={(e) => { if (expanded) (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-            >
-              {chip.label}
-            </button>
-          ))}
+          <Text size="xs" color="secondary">Acme Corp · 4 agreements</Text>
+          {selectedMsg && (
+            <span style={{
+              fontSize: 12, color: 'var(--ink-text-secondary)',
+              background: 'var(--ink-neutral-fade-05, #f7f7f9)',
+              border: '1px solid var(--ink-border-color-subtle)',
+              borderRadius: 100, padding: '2px 10px',
+            }}>
+              {selectedMsg}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Expandable section */}
+      {/* Full card — shown before chip selection */}
       <div style={{
-        maxHeight: expanded ? '220px' : '0px',
-        opacity: expanded ? 1 : 0,
+        maxHeight: collapsed ? '0px' : '500px',
+        opacity: collapsed ? 0 : 1,
         overflow: 'hidden',
-        transition: 'max-height 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease',
+        transition: 'max-height 350ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
       }}>
-        <div style={{ padding: '0 24px 20px' }}>
-          {/* Quick stats row */}
+        {/* Always-visible body */}
+        <div style={{ padding: '20px 24px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+            <IrisIcon />
+            <Text size="xs" color="secondary">Iris · 4 agreements found for "Acme"</Text>
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 500, color: 'var(--ink-text-primary)', marginBottom: 14, lineHeight: 1.4 }}>
+            You're looking at contracts with <strong>Acme Corp</strong>
+          </div>
+
+          {/* Stats row — always visible */}
           <div style={{
             display: 'flex',
             background: 'var(--ink-neutral-fade-03, #fafafa)',
@@ -2261,60 +2245,98 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
               </div>
             ))}
           </div>
-          {/* Inline ask input */}
-          <div style={{
-            border: '1px solid var(--ink-border-color-default)',
-            borderRadius: 100, padding: '8px 8px 8px 16px',
-            background: '#fff', display: 'flex', alignItems: 'center', gap: 8,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-          }}>
-            <input
-              placeholder="Ask anything about Acme..."
-              style={{
-                flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                fontSize: 14, fontFamily: 'inherit', color: 'var(--ink-text-primary)',
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  const val = (e.target as HTMLInputElement).value.trim();
-                  if (val) handleChip(val);
-                }
-              }}
-            />
-            <button style={{
-              width: 28, height: 28, borderRadius: '50%', border: 'none',
-              background: 'var(--ink-purple-100, #4B47C8)', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}>
-              <Icon name="arrow-up" size={13} color="#fff" />
-            </button>
+
+          <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', marginBottom: 12 }}>
+            What would you like to explore?
+          </div>
+
+          {/* Chips */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, paddingBottom: 18 }}>
+            {chips.map(chip => (
+              <button
+                key={chip.label}
+                onClick={() => handleChip(chip.msg)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center',
+                  background: '#fff',
+                  border: '1px solid var(--ink-border-color-default)',
+                  borderRadius: 100, padding: '6px 14px', fontSize: 13,
+                  color: 'var(--ink-text-primary)',
+                  cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
+                  transition: 'background 150ms ease, transform 100ms ease',
+                  transform: activeChip === chip.msg ? 'scale(0.95)' : 'scale(1)',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+              >
+                {chip.label}
+              </button>
+            ))}
           </div>
         </div>
-      </div>
 
-      {/* Divider with centered Show more / Show less button */}
-      <div style={{ position: 'relative', margin: `${expanded ? 0 : 4}px 0 0` }}>
-        <div style={{ height: 1, background: 'var(--ink-border-color-subtle)' }} />
-        <button
-          onClick={() => setExpanded(e => !e)}
-          style={{
-            position: 'absolute', top: '50%', left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: '#fff', border: '1px solid var(--ink-border-color-default)',
-            borderRadius: 100, padding: '5px 14px',
-            fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)',
-            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-            fontFamily: 'inherit', whiteSpace: 'nowrap',
-            transition: 'background 150ms ease',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-        >
-          {expanded ? 'Show less' : 'Show more'}
-          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={12} />
-        </button>
+        {/* Expandable section — inline ask input */}
+        <div style={{
+          maxHeight: expanded ? '120px' : '0px',
+          opacity: expanded ? 1 : 0,
+          overflow: 'hidden',
+          transition: 'max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease',
+        }}>
+          <div style={{ padding: '0 24px 20px' }}>
+            <div style={{
+              border: '1px solid var(--ink-border-color-default)',
+              borderRadius: 100, padding: '8px 8px 8px 16px',
+              background: '#fff', display: 'flex', alignItems: 'center', gap: 8,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            }}>
+              <input
+                placeholder="Ask anything about Acme..."
+                style={{
+                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: 14, fontFamily: 'inherit', color: 'var(--ink-text-primary)',
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = (e.target as HTMLInputElement).value.trim();
+                    if (val) handleChip(val);
+                  }
+                }}
+              />
+              <button style={{
+                width: 28, height: 28, borderRadius: '50%', border: 'none',
+                background: 'var(--ink-purple-100, #4B47C8)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <Icon name="arrow-up" size={13} color="#fff" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Divider + Show more / Show less */}
+        <div style={{ position: 'relative' }}>
+          <div style={{ height: 1, background: 'var(--ink-border-color-subtle)' }} />
+          <button
+            onClick={() => setExpanded(e => !e)}
+            style={{
+              position: 'absolute', top: '50%', left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#fff', border: '1px solid var(--ink-border-color-default)',
+              borderRadius: 100, padding: '5px 14px',
+              fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+              fontFamily: 'inherit', whiteSpace: 'nowrap',
+              transition: 'background 150ms ease',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            {expanded ? 'Show less' : 'Show more'}
+            <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={12} />
+          </button>
+        </div>
+        <div style={{ height: 18 }} />
       </div>
-      <div style={{ height: 18 }} />
     </div>
   );
 }
