@@ -461,7 +461,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   );
 
   return (
-    <div style={{ width: mounted ? `${sidebarWidth}px` : '0px', flexShrink: 0, overflow: 'hidden', transition: isDragging.current ? 'none' : 'width 350ms cubic-bezier(0.4, 0, 0.2, 1)', position: 'relative' }}>
+    <div style={{ width: mounted ? `${sidebarWidth}px` : '0px', flexShrink: 0, overflow: 'hidden', transition: isDragging.current ? 'none' : 'width 460ms cubic-bezier(0.22, 1, 0.36, 1)', position: 'relative' }}>
       {/* Resize handle */}
       <div
         onMouseDown={handleResizeMouseDown}
@@ -469,7 +469,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-30, #ddd9ff)'; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
       />
-    <div style={{ width: `${sidebarWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100vh', borderLeft: '1px solid var(--ink-border-color-subtle)', background: '#fff', overflow: 'hidden', transform: mounted ? 'translateX(0)' : 'translateX(100%)', transition: isDragging.current ? 'none' : 'transform 350ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
+    <div style={{ width: `${sidebarWidth}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100vh', borderLeft: '1px solid var(--ink-border-color-subtle)', background: '#fff', overflow: 'hidden', transform: mounted ? 'translateX(0)' : 'translateX(100%)', transition: isDragging.current ? 'none' : 'transform 460ms cubic-bezier(0.22, 1, 0.36, 1)' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', height: '48px', borderBottom: '1px solid var(--ink-border-color-subtle)', flexShrink: 0 }}>
         <Inline gap="small" align="center">
@@ -2245,9 +2245,9 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
       </Text>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 8 }}>
         {[
-          { label: "Which ones have no price cap?", scripted: false },
-          { label: "Which have the shortest notice periods?", scripted: false },
-          { label: "Identify which might increase in price", scripted: true },
+          { label: "Show contracts with no price cap", scripted: false },
+          { label: "Which ones expire the soonest?", scripted: false },
+          { label: "Which ones might increase in price?", scripted: true },
         ].map((chip) => (
           <button
             key={chip.label}
@@ -2255,17 +2255,19 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
               if (chip.scripted) {
                 handle("I want to identify which agreements might increase in price and by how much");
               } else {
-                setNotScriptedMsg("That path isn't scripted in the demo yet — try the highlighted chip to continue.");
+                setNotScriptedMsg("This path isn't in the demo — try 'Which ones might increase in price?' to continue.");
               }
             }}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,
-              background: chip.scripted ? 'var(--ink-purple-10, #f5f3ff)' : '#fff',
-              border: `1px solid ${chip.scripted ? 'var(--ink-purple-30, #ddd9ff)' : 'var(--ink-border-color-default)'}`,
+              background: '#fff',
+              border: '1px solid var(--ink-border-color-default)',
               borderRadius: 100, padding: '5px 12px', fontSize: 12,
-              color: chip.scripted ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-primary)',
-              cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
+              color: 'var(--ink-text-primary)',
+              cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
             }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
           >
             {chip.label}
           </button>
@@ -4539,12 +4541,6 @@ export default function App() {
             suggestionsHideTimer.current = setTimeout(() => setShowSuggestions(false), 150);
           }}
         >
-        {isNavigatorView && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 0 6px 2px' }}>
-            <IrisIcon />
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)', letterSpacing: '0.01em' }}>Ask Iris</span>
-          </div>
-        )}
         <FilterBar
           viewSelector={isPartiesView ? (
             <Button kind="secondary" size="small" menuTrigger>Role View</Button>
@@ -4657,7 +4653,7 @@ export default function App() {
     <>
     <style>{tableRowStaggerStyles}</style>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <div style={{ flex: 1, minWidth: 0, overflow: 'auto', transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)' }}>
+      <div style={{ flex: 1, minWidth: 0, overflow: 'auto', transition: 'flex 460ms cubic-bezier(0.22, 1, 0.36, 1)' }}>
         <DocuSignShell
           globalNav={globalNavConfig}
           localNav={showIrisSidebar
