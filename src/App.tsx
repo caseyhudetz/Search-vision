@@ -177,6 +177,7 @@ function FadeIn({ children, keyProp: _keyProp }: { children: React.ReactNode; ke
 const SUGGESTED_QUESTIONS = [
   { id: 'sq_current', icon: 'person' as const, query: 'Acme', description: 'Current state · type a name, browse results, open a document' },
   { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'Future state · AI-guided analysis, risk identification, and structured worksheet' },
+  { id: 'sq_autorenew', icon: 'bell' as const, query: 'Alert me to contracts at risk of auto-renewing', description: 'Future state v2 · Proactive monitoring, risk scoring, and recommended actions' },
 ];
 
 function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) => void }) {
@@ -230,6 +231,12 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-green-80, #2f9e44)', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-green-80, #2f9e44)', flexShrink: 0 }} />
                   Future state
+                </span>
+              )}
+              {q.id === 'sq_autorenew' && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#fff', background: '#0E7490', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff', flexShrink: 0 }} />
+                  Future state v2
                 </span>
               )}
             </div>
@@ -350,6 +357,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   const isSLAFlow = q.includes('software') && q.includes('sla');
   const isPartyFlow = q.trim() === 'acme';
   const isRenewalScanFlow = (q.includes('6 month') || q.includes('six month')) && (q.includes('expir') || q.includes('renew') || q.includes('vendor'));
+  const isAutoRenewFlow = q.includes('auto-renew') || q.includes('alert me') || q.includes('auto renew');
 
   const sendMessage = (msg: string) => {
     setUserMessages(prev => [...prev, msg]);
@@ -359,6 +367,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
       setIsThinking(false);
       if ((isPriceRaiseFlow || isVendorExposureFlow || isSLAFlow || isPartyFlow) && convStep === 0) setConvStep(1);
       if (isRenewalScanFlow && convStep < 3) setConvStep(convStep + 1);
+      if (isAutoRenewFlow && convStep < 3) setConvStep(convStep + 1);
     }, 1300);
   };
 
@@ -430,6 +439,11 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               if (convStep === 0 && userMessages.length === 0) setInputValue("I want to identify which agreements might increase in price and by how much");
               else if (convStep === 1 && userMessages.length === 1) setInputValue("Yes, let's do that.");
               else if (convStep === 2 && userMessages.length === 2) setInputValue('Add Primary Owner');
+            }
+            if (!inputValue && isAutoRenewFlow) {
+              if (convStep === 0 && userMessages.length === 0) setInputValue('Yes, score by risk');
+              else if (convStep === 1 && userMessages.length === 1) setInputValue('Yes, build the action list');
+              else if (convStep === 2 && userMessages.length === 2) setInputValue('Add Contract Value');
             }
           }}
           placeholder="Ask a question..."
@@ -1021,6 +1035,130 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </div>
           {irisInputArea}
         </>
+      ) : isAutoRenewFlow ? (
+        /* ── Auto-Renew Risk flow ── */
+        <>
+          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <IrisUserBubble text={question} />
+
+            {/* Thinking before step 0 */}
+            {!cameFromAnswerBlock && !initialReady && <IrisThinkingBubble />}
+
+            {/* Step 0 response */}
+            {(cameFromAnswerBlock || initialReady) && (
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  I've identified <strong>8 contracts</strong> with auto-renewal clauses active within the next 45 days — and <strong>3 of them</strong> have price escalation tied to renewal.
+                </Text>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Want me to score them by risk level?
+                </Text>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+
+            {userMessages.length > 0 && (cameFromAnswerBlock || initialReady) && <IrisUserBubble text={userMessages[0]} />}
+            {cameFromAnswerBlock && !initialReady && <IrisThinkingBubble />}
+            {!cameFromAnswerBlock && initialReady && isThinking && convStep === 0 && <IrisThinkingBubble />}
+
+            {initialReady && convStep >= 1 && (
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  I've scored the 8 contracts across three risk factors: <strong>notice period urgency</strong>, <strong>price escalation exposure</strong>, and <strong>no internal owner assigned</strong>. Here's what I'm seeing:
+                </Text>
+                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { color: '#DC2626', label: 'High risk', detail: '3 contracts — Salesforce, Workday, Slack' },
+                    { color: '#D97706', label: 'Medium risk', detail: '3 contracts — Zendesk, Adobe, Box' },
+                    { color: '#16A34A', label: 'Low risk', detail: '2 contracts with fixed terms' },
+                  ].map((row, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: i > 0 ? '6px 0 0' : '0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: row.color, flexShrink: 0 }} />
+                      <Text size="sm" style={{ fontWeight: 600 }}>{row.label}</Text>
+                      <Text size="sm" color="secondary">— {row.detail}</Text>
+                    </div>
+                  ))}
+                </div>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>Shall I build a prioritized action list?</Text>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+
+            {initialReady && userMessages.length > 1 && <IrisUserBubble text={userMessages[1]} />}
+            {initialReady && isThinking && convStep === 1 && <IrisThinkingBubble />}
+
+            {initialReady && convStep >= 2 && (
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Great. I'll structure this as a <strong>Risk-Prioritized Renewal Tracker</strong>. To give you the best view, I suggest these columns:
+                </Text>
+                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[
+                    { label: 'Vendor', desc: 'Contracting party' },
+                    { label: 'Risk Score', desc: 'High / Medium / Low based on 3 factors' },
+                    { label: 'Days Until Auto-Renewal', desc: 'Days remaining before clause activates' },
+                    { label: 'Recommended Action', desc: 'Suggested next step' },
+                    { label: 'Assigned Owner', desc: 'Internal owner for follow-up' },
+                  ].map((col, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-text-secondary)', marginTop: 6, flexShrink: 0 }} />
+                      <div>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', lineHeight: 1.4, display: 'block' }}>{col.label}</span>
+                        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', lineHeight: 1.4 }}>{col.desc}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>Want to add any columns before I generate?</Text>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+
+            {initialReady && userMessages.length > 2 && <IrisUserBubble text={userMessages[2]} />}
+            {initialReady && isThinking && convStep === 2 && <IrisThinkingBubble />}
+
+            {initialReady && convStep >= 3 && !worksheetMode && (
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Added. Your tracker will include <strong>Contract Value</strong> to help prioritize negotiation effort.
+                </Text>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>Ready to generate your Risk-Prioritized Renewal Tracker?</Text>
+                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {['Vendor', 'Risk Score', 'Days Until Auto-Renewal', 'Recommended Action', 'Assigned Owner', 'Contract Value'].map((col, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: i > 0 ? '4px 0 0' : '0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                      <Icon name="status-check" size={12} color="var(--ink-green-80, #2f9e44)" />
+                      <Text size="sm">{col}</Text>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('auto-renew-risk'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
+                  Generate Tracker
+                  <Icon name="arrow-right" size={13} color="#fff" />
+                </button>
+              </Stack>
+            )}
+
+            {initialReady && convStep >= 3 && worksheetMode && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
+                  <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                  <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Risk Tracker built — 8 contracts</Text>
+                </div>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>Your 3 high-risk contracts need attention this week. Salesforce's notice period expires in <strong>12 days</strong> — want me to draft a negotiation brief?</Text>
+              </div>
+            )}
+          </div>
+          {irisInputArea}
+        </>
       ) : isRenewalScanFlow ? (
         /* ── Renewal scan: multi-step planning flow ── */
         <>
@@ -1353,6 +1491,10 @@ const WORKSHEET_LOADING_LABELS: Record<string, { title: string; steps: string[] 
     title: 'Setting up your renewal tracker…',
     steps: ['Scanning 42 expiring agreements', 'Checking notice periods and price increase rights', 'Identifying percentage caps and primary owners'],
   },
+  'auto-renew-risk': {
+    title: 'Setting up your auto-renewal risk tracker…',
+    steps: ['Scanning 8 contracts with active auto-renewal clauses', 'Scoring risk across notice period, price escalation, and owner gaps', 'Building prioritized action view'],
+  },
   'vendor-exposure': {
     title: 'Vendor Exposure Worksheet',
     steps: ['Reading Acme Corp agreements', 'Extracting volume metrics and MFN clauses', 'Calculating exposure summary'],
@@ -1390,6 +1532,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
   const [dataReady, setDataReady] = useState(false);
   const fade = useFadeIn(0, 250);
   const isRenewalView = worksheetType === 'renewal-scan';
+  const isAutoRenewView = worksheetType === 'auto-renew-risk';
 
   useEffect(() => {
     const t = setTimeout(() => setDataReady(true), 2400);
@@ -1508,6 +1651,123 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
     },
   ];
 
+  /* ── Auto-renew risk data ── */
+  const autoRenewRows = [
+    { id: 'ar1', fileName: 'MSA - Salesforce Inc.pdf', vendor: 'Salesforce', daysUntil: 12, risk: 'High', action: 'Negotiate now', value: '$180k/yr', owner: 'Mark Chen' },
+    { id: 'ar2', fileName: 'Enterprise Agreement - Workday.pdf', vendor: 'Workday', daysUntil: 18, risk: 'High', action: 'Negotiate now', value: '$140k/yr', owner: 'Sarah Kim' },
+    { id: 'ar3', fileName: 'Subscription - Slack Technologies.pdf', vendor: 'Slack', daysUntil: 22, risk: 'High', action: 'Review terms', value: '$95k/yr', owner: 'Mark Chen' },
+    { id: 'ar4', fileName: 'SaaS Agreement - Zendesk.pdf', vendor: 'Zendesk', daysUntil: 28, risk: 'Medium', action: 'Review terms', value: '$62k/yr', owner: 'Lisa Torres' },
+    { id: 'ar5', fileName: 'Creative Cloud - Adobe Inc.pdf', vendor: 'Adobe', daysUntil: 31, risk: 'Medium', action: 'Monitor', value: '$48k/yr', owner: 'Dev Patel' },
+    { id: 'ar6', fileName: 'Enterprise License - Box Inc.pdf', vendor: 'Box', daysUntil: 38, risk: 'Medium', action: 'Monitor', value: '$78k/yr', owner: 'Sarah Kim' },
+    { id: 'ar7', fileName: 'NDA - Horizon Partners.pdf', vendor: 'Horizon Partners', daysUntil: 41, risk: 'Low', action: 'Monitor', value: '—', owner: '—' },
+    { id: 'ar8', fileName: 'Service Agreement - Pinnacle.pdf', vendor: 'Pinnacle', daysUntil: 44, risk: 'Low', action: 'Monitor', value: '$62k/yr', owner: '—' },
+  ];
+
+  const autoRenewColumns = [
+    {
+      key: 'fileName',
+      header: 'File name',
+      cell: (row: typeof autoRenewRows[0]) => (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--ink-neutral-fade-05, #f5f5f8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="document" size={14} color="var(--ink-text-secondary)" />
+          </div>
+          <span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)', display: 'block', lineHeight: 1.3 }}>{row.fileName}</span>
+            <span style={{ fontSize: 11, color: 'var(--ink-text-secondary)', display: 'block', marginTop: 1 }}>Completed envelope · Active agreement</span>
+          </span>
+        </span>
+      ),
+      width: '280px',
+    },
+    {
+      key: 'vendor',
+      header: 'Vendor',
+      cell: (row: typeof autoRenewRows[0]) => <span style={{ fontSize: 13, fontWeight: 500 }}>{row.vendor}</span>,
+      width: '130px',
+    },
+    {
+      key: 'daysUntil',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Days Until Auto-Renewal</span>
+        </span>
+      ),
+      cell: (row: typeof autoRenewRows[0]) => {
+        if (!dataReady) return <ShimmerCell width="50%" />;
+        const color = row.daysUntil <= 14 ? '#DC2626' : row.daysUntil <= 30 ? '#D97706' : '#16A34A';
+        const weight = row.daysUntil <= 14 ? 700 : row.daysUntil <= 30 ? 600 : 400;
+        return <span style={{ fontSize: 13, color, fontWeight: weight }}>{row.daysUntil} days</span>;
+      },
+      width: '190px',
+    },
+    {
+      key: 'risk',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Risk Score</span>
+        </span>
+      ),
+      cell: (row: typeof autoRenewRows[0]) => {
+        if (!dataReady) return <ShimmerCell width="60%" />;
+        const dotColor = row.risk === 'High' ? '#DC2626' : row.risk === 'Medium' ? '#D97706' : '#16A34A';
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+            {row.risk}
+          </span>
+        );
+      },
+      width: '120px',
+    },
+    {
+      key: 'action',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Recommended Action</span>
+        </span>
+      ),
+      cell: (row: typeof autoRenewRows[0]) => aiCell(row.action, '80%'),
+      width: '170px',
+    },
+    {
+      key: 'value',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Contract Value</span>
+        </span>
+      ),
+      cell: (row: typeof autoRenewRows[0]) => aiCell(row.value, '60%'),
+      width: '130px',
+    },
+    {
+      key: 'owner',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Assigned Owner</span>
+        </span>
+      ),
+      cell: (row: typeof autoRenewRows[0]) => aiCell(row.owner, '65%'),
+      width: '140px',
+    },
+    {
+      key: 'addCol',
+      header: (
+        <button style={{ background: 'none', border: '1px dashed var(--ink-border-color-default)', borderRadius: 6, cursor: 'pointer', padding: '3px 10px', color: 'var(--ink-text-secondary)', fontSize: 16, fontWeight: 400, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }} title="Add column">
+          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+          <span style={{ fontSize: 12 }}>Add column</span>
+        </button>
+      ),
+      cell: () => null,
+      width: '120px',
+    },
+  ];
+
   /* ── Vendor exposure (Acme) data ── */
   const worksheetRows = [
     { id: 'w1', fileName: 'MSA - Acme Corp.pdf', type: 'MSA', contractValue: '$180,000/yr', expirationDate: 'Apr 26, 2027', volumeMetric: '500 contracted · 720 actual (+44%)', mfnClause: 'Yes — §8.3' },
@@ -1588,9 +1848,9 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
     },
   ];
 
-  const viewTitle = isRenewalView ? 'Vendor Renewals — Next 6 Months' : 'Acme Corp — Committed Spend & Usage';
-  const viewCrumb = isRenewalView ? 'Renewal Analysis' : 'Vendor Exposure Analysis — Acme Corp';
-  const viewMeta = isRenewalView ? '42 agreements · Vendor renewals · Created just now' : '3 agreements · Acme Corp · Created just now';
+  const viewTitle = isAutoRenewView ? 'Auto-Renewal Risk Tracker' : isRenewalView ? 'Vendor Renewals — Next 6 Months' : 'Acme Corp — Committed Spend & Usage';
+  const viewCrumb = isAutoRenewView ? 'Auto-Renewal Risk' : isRenewalView ? 'Renewal Analysis' : 'Vendor Exposure Analysis — Acme Corp';
+  const viewMeta = isAutoRenewView ? '8 agreements · Risk-prioritized · Created just now' : isRenewalView ? '42 agreements · Vendor renewals · Created just now' : '3 agreements · Acme Corp · Created just now';
 
   return (
     <div {...fade} style={{ ...fade.style, display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
@@ -1607,7 +1867,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ink-purple-10, #f5f3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name={isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
+            <Icon name={isAutoRenewView ? 'bell' : isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
           </div>
           <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, color: 'var(--ink-text-primary)', lineHeight: 1.2 }}>{viewTitle}</h1>
         </div>
@@ -1644,7 +1904,18 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
 
       {/* Table — matches AgreementTableView .tableWrapper margin */}
       <div style={{ flex: 1, margin: '0 80px', minHeight: 0 }}>
-        {isRenewalView ? (
+        {isAutoRenewView ? (
+          <DataTable
+            columns={autoRenewColumns}
+            data={autoRenewRows}
+            getRowKey={(row) => row.id}
+            stickyHeader
+            rowHeight="tall"
+            selectable
+            showColumnControl
+            pagination={{ page: 1, pageSize: 50, totalItems: autoRenewRows.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }}
+          />
+        ) : isRenewalView ? (
           <DataTable
             columns={renewalColumns}
             data={renewalRows}
@@ -1954,6 +2225,7 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
   const [collapsed, setCollapsed] = useState(false);
   const [collapsedViaIris, setCollapsedViaIris] = useState(false);
   const [chipsReady, setChipsReady] = useState(false);
+  const [notScriptedMsg, setNotScriptedMsg] = useState('');
   useEffect(() => { const t = setTimeout(() => setChipsReady(true), 700); return () => clearTimeout(t); }, []);
   const handle = (msg: string) => { setCollapsed(true); setCollapsedViaIris(true); onContinue(msg); };
   if (collapsed) return <CollapsedAnswerBar summary="42 agreements expiring soon — identifying price hike risk" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
@@ -1962,7 +2234,7 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <Inline gap="xs" align="center">
           <IrisIcon />
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--ink-purple-100)' }}>Answer</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-purple-100)' }}>Iris</span>
         </Inline>
         <button onClick={() => setCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}>
           <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
@@ -1971,6 +2243,39 @@ function RenewalsSixMonthAnswerBlock({ onContinue, onBuildWorksheet }: { onConti
       <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
         I've found <strong>42 agreements</strong> hitting their expiration dates soon. What else would you like to understand about these agreements?
       </Text>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 8 }}>
+        {[
+          { label: "Which ones have no price cap?", scripted: false },
+          { label: "Which have the shortest notice periods?", scripted: false },
+          { label: "Identify which might increase in price", scripted: true },
+        ].map((chip) => (
+          <button
+            key={chip.label}
+            onClick={() => {
+              if (chip.scripted) {
+                handle("I want to identify which agreements might increase in price and by how much");
+              } else {
+                setNotScriptedMsg("That path isn't scripted in the demo yet — try the highlighted chip to continue.");
+              }
+            }}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              background: chip.scripted ? 'var(--ink-purple-10, #f5f3ff)' : '#fff',
+              border: `1px solid ${chip.scripted ? 'var(--ink-purple-30, #ddd9ff)' : 'var(--ink-border-color-default)'}`,
+              borderRadius: 100, padding: '5px 12px', fontSize: 12,
+              color: chip.scripted ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-primary)',
+              cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
+            }}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+      {notScriptedMsg && (
+        <p style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontStyle: 'italic', margin: '0 0 8px' }}>
+          {notScriptedMsg}
+        </p>
+      )}
       <InlineFollowUp onContinue={handle} chips={[]} prefill="I want to identify which agreements might increase in price and by how much" />
     </div>
   );
@@ -2252,6 +2557,49 @@ function VendorExposureAnswerBlock({ onContinue, onBuildWorksheet }: { onContinu
 }
 
 /* ═══════════════════════════════════════
+   Auto-Renew Answer Block
+   ═══════════════════════════════════════ */
+
+function AutoRenewAnswerBlock({ onContinue }: { onContinue: (msg: string) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
+  const handle = (msg: string) => { setCollapsed(true); setCollapsedViaIris(true); onContinue(msg); };
+  if (collapsed) return <CollapsedAnswerBar summary="8 contracts with active auto-renewal clauses — 3 with price escalation risk" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '16px 20px', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <Inline gap="xs" align="center">
+          <IrisIcon />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-purple-100)' }}>Iris</span>
+        </Inline>
+        <button onClick={() => setCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}>
+          <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
+        </button>
+      </div>
+      <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
+        I've identified <strong>8 contracts</strong> with auto-renewal clauses active within the next 45 days — and <strong>3 of them</strong> have price escalation tied to renewal. Want me to score them by risk level?
+      </Text>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 8 }}>
+        <button
+          onClick={() => handle('Yes, score by risk')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5,
+            background: 'var(--ink-purple-10, #f5f3ff)',
+            border: '1px solid var(--ink-purple-30, #ddd9ff)',
+            borderRadius: 100, padding: '5px 12px', fontSize: 12,
+            color: 'var(--ink-purple-100, #4B47C8)',
+            cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
+          }}
+        >
+          Yes, score by risk
+        </button>
+      </div>
+      <InlineFollowUp onContinue={handle} chips={[]} prefill="Yes, score by risk" />
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
    AI Answer Block
    ═══════════════════════════════════════ */
 
@@ -2347,7 +2695,11 @@ function AIAnswerBlock({ onContinue, question, onBuildWorksheet }: { onContinue:
   const [collapsed, setCollapsed] = useState(false);
   const [collapsedViaIris, setCollapsedViaIris] = useState(false);
   const q = question.toLowerCase();
+  const isAutoRenewQuery = q.includes('auto-renew') || q.includes('alert me');
   if (collapsed) return <CollapsedAnswerBar summary="Answer collapsed — click to expand" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
+  if (isAutoRenewQuery) {
+    return <AutoRenewAnswerBlock onContinue={onContinue} />;
+  }
   // Acme party card — simple name lookup
   if (q.trim() === 'acme' || (q.includes('acme') && q.length < 12 && !q.includes('?') && !q.includes('spend') && !q.includes('exposure'))) {
     return <AcmePartyCard onContinue={onContinue} onBuildWorksheet={onBuildWorksheet} />;
@@ -3748,7 +4100,7 @@ export default function App() {
   const handleBuildWorksheet = useCallback((type: string) => {
     setWorksheetType(type);
     setWorksheetLoading(true);
-    if (type === 'vendor-exposure-acme' || type === 'renewal-scan') {
+    if (type === 'vendor-exposure-acme' || type === 'renewal-scan' || type === 'auto-renew-risk') {
       setTimeout(() => {
         setWorksheetLoading(false);
         setShowWorksheetView(true);
@@ -4187,6 +4539,12 @@ export default function App() {
             suggestionsHideTimer.current = setTimeout(() => setShowSuggestions(false), 150);
           }}
         >
+        {isNavigatorView && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 0 6px 2px' }}>
+            <IrisIcon />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)', letterSpacing: '0.01em' }}>Ask Iris</span>
+          </div>
+        )}
         <FilterBar
           viewSelector={isPartiesView ? (
             <Button kind="secondary" size="small" menuTrigger>Role View</Button>
@@ -4196,7 +4554,7 @@ export default function App() {
             onChange: (v) => { setSearch(v); if (!v) { setSubmittedSearch(''); setShowIrisSidebar(false); } },
             onSubmit: isNavigatorView ? () => { setSubmittedSearch(search); setShowSuggestions(false); } : undefined,
             placeholder: isNavigatorView
-              ? "Try 'which agreements expire in 90 days'"
+              ? "Ask a question about your agreements..."
               : isPartiesView ? 'Search parties...'
               : isRequestsView ? 'Search Request Titles or IDs...'
               : 'Search Envelopes',
@@ -4256,7 +4614,7 @@ export default function App() {
           {submittedSearch && filteredNavigator.length < 687 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '3px 12px' }}>
-                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {selectedQueryId !== 'sq_current' ? 42 : filteredNavigator.length} of 687</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {selectedQueryId === 'sq_autorenew' ? 8 : selectedQueryId !== 'sq_current' ? 42 : filteredNavigator.length} of 687</span>
               </div>
               <Text size="xs" color="secondary">agreements matching your search</Text>
               <button onClick={() => { setSearch(''); setSubmittedSearch(''); setSelectedQueryId(''); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>Clear filter</button>
