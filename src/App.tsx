@@ -105,6 +105,11 @@ const tableRowStaggerStyles = `
 .chip-fade-in {
   animation: chipFadeIn 320ms cubic-bezier(0.33, 0, 0.67, 1) both;
 }
+
+@keyframes acmeCardIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 `;
 
 /* ═══════════════════════════════════════
@@ -2139,6 +2144,180 @@ function WorksheetModal({ onClose, worksheetType = 'renewals' }: { onClose: () =
 /* ═══════════════════════════════════════
    Answer Loading Skeleton
    ═══════════════════════════════════════ */
+
+/* ═══════════════════════════════════════
+   Acme Answer Card (current-state entity card)
+   ═══════════════════════════════════════ */
+
+function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [activeChip, setActiveChip] = useState<string | null>(null);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const chips = [
+    { label: 'When do these expire?', msg: 'When do these expire?' },
+    { label: 'What are the renewal terms?', msg: 'What are the renewal terms?' },
+    { label: 'Who owns these contracts?', msg: 'Who owns these contracts?' },
+    { label: 'Show payment terms', msg: 'Show payment terms' },
+  ];
+
+  const handleChip = (msg: string) => {
+    if (exiting) return;
+    setActiveChip(msg);
+    setExiting(true);
+    setTimeout(() => onChipSelect(msg), 150);
+    setTimeout(() => setDismissed(true), 400);
+  };
+
+  if (dismissed) return null;
+
+  const cardOpacity = !visible ? 0 : exiting ? 0 : 1;
+  const cardTranslate = !visible ? 'translateY(6px)' : exiting ? 'translateY(-8px)' : 'translateY(0)';
+  const cardTransition = (!visible || exiting)
+    ? 'opacity 200ms ease, transform 200ms ease'
+    : 'opacity 300ms cubic-bezier(0.33, 0, 0.67, 1), transform 300ms cubic-bezier(0.35, 0, 0.2, 1)';
+
+  return (
+    <div style={{
+      marginBottom: 20,
+      background: '#fff',
+      border: '1px solid var(--ink-border-color-subtle)',
+      borderRadius: 12,
+      opacity: cardOpacity,
+      transform: cardTranslate,
+      transition: cardTransition,
+    }}>
+
+      {/* Card body — always visible */}
+      <div style={{ padding: '20px 24px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+          <IrisIcon />
+          <Text size="xs" color="secondary">Iris · 4 agreements found for "Acme"</Text>
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 500, color: 'var(--ink-text-primary)', marginBottom: 4, lineHeight: 1.4 }}>
+          You're looking at contracts with <strong>Acme Corp</strong>
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', marginBottom: 16 }}>
+          What would you like to explore?
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+          {chips.map(chip => (
+            <button
+              key={chip.label}
+              onClick={() => handleChip(chip.msg)}
+              style={{
+                display: 'inline-flex', alignItems: 'center',
+                background: expanded ? '#fff' : 'transparent',
+                border: `1px solid ${expanded ? 'var(--ink-border-color-default)' : 'var(--ink-border-color-subtle)'}`,
+                borderRadius: 100, padding: '6px 14px', fontSize: 13,
+                color: expanded ? 'var(--ink-text-primary)' : 'var(--ink-text-secondary)',
+                cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
+                opacity: expanded ? 1 : 0.7,
+                transition: 'background 280ms ease, border-color 280ms ease, color 280ms ease, opacity 280ms ease, transform 100ms ease',
+                transform: activeChip === chip.msg ? 'scale(0.95)' : 'scale(1)',
+              }}
+              onMouseEnter={(e) => { if (expanded) (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+              onMouseLeave={(e) => { if (expanded) (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Expandable section */}
+      <div style={{
+        maxHeight: expanded ? '220px' : '0px',
+        opacity: expanded ? 1 : 0,
+        overflow: 'hidden',
+        transition: 'max-height 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease',
+      }}>
+        <div style={{ padding: '0 24px 20px' }}>
+          {/* Quick stats row */}
+          <div style={{
+            display: 'flex',
+            background: 'var(--ink-neutral-fade-03, #fafafa)',
+            border: '1px solid var(--ink-border-color-subtle)',
+            borderRadius: 10, overflow: 'hidden', marginBottom: 16,
+          }}>
+            {[
+              { label: 'Active contracts', value: '3' },
+              { label: 'Expiring < 90 days', value: '2', urgent: true },
+              { label: 'Committed spend', value: '$225K/yr' },
+            ].map((stat, i) => (
+              <div key={stat.label} style={{
+                flex: 1, padding: '10px 14px',
+                borderLeft: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none',
+              }}>
+                <div style={{ fontSize: 11, color: 'var(--ink-text-secondary)', marginBottom: 3 }}>{stat.label}</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: stat.urgent ? '#D97706' : 'var(--ink-text-primary)' }}>{stat.value}</div>
+              </div>
+            ))}
+          </div>
+          {/* Inline ask input */}
+          <div style={{
+            border: '1px solid var(--ink-border-color-default)',
+            borderRadius: 100, padding: '8px 8px 8px 16px',
+            background: '#fff', display: 'flex', alignItems: 'center', gap: 8,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+          }}>
+            <input
+              placeholder="Ask anything about Acme..."
+              style={{
+                flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                fontSize: 14, fontFamily: 'inherit', color: 'var(--ink-text-primary)',
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const val = (e.target as HTMLInputElement).value.trim();
+                  if (val) handleChip(val);
+                }
+              }}
+            />
+            <button style={{
+              width: 28, height: 28, borderRadius: '50%', border: 'none',
+              background: 'var(--ink-purple-100, #4B47C8)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <Icon name="arrow-up" size={13} color="#fff" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Divider with centered Show more / Show less button */}
+      <div style={{ position: 'relative', margin: `${expanded ? 0 : 4}px 0 0` }}>
+        <div style={{ height: 1, background: 'var(--ink-border-color-subtle)' }} />
+        <button
+          onClick={() => setExpanded(e => !e)}
+          style={{
+            position: 'absolute', top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: '#fff', border: '1px solid var(--ink-border-color-default)',
+            borderRadius: 100, padding: '5px 14px',
+            fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+            fontFamily: 'inherit', whiteSpace: 'nowrap',
+            transition: 'background 150ms ease',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={12} />
+        </button>
+      </div>
+      <div style={{ height: 18 }} />
+    </div>
+  );
+}
 
 function AnswerSkeleton() {
   return (
@@ -4175,6 +4354,10 @@ export default function App() {
     }
   }, []);
   const [irisFollowUp, setIrisFollowUp] = useState<string | undefined>();
+  const handleAcmeChipSelect = useCallback((msg: string) => {
+    setIrisFollowUp(msg);
+    setShowIrisSidebar(true);
+  }, []);
   const [isAnswerLoading, setIsAnswerLoading] = useState(false);
   const suggestionsHideTimer = useRef<ReturnType<typeof setTimeout>>();
   const [showAgreementDetail, setShowAgreementDetail] = useState(false);
@@ -4668,6 +4851,9 @@ export default function App() {
         <DataTable columns={requestColumns} data={filteredRequests} getRowKey={(row) => row.id} stickyHeader showColumnControl rowHeight="tall" emptyMessage="No requests found" pagination={{ page: 1, pageSize: 10, totalItems: filteredRequests.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
       ) : isNavigatorView ? (
         <>
+          {submittedSearch && selectedQueryId === 'sq_current' && (
+            <AcmeAnswerCard key={submittedSearch} onChipSelect={handleAcmeChipSelect} />
+          )}
           {submittedSearch && selectedQueryId !== 'sq_current' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
           {submittedSearch && filteredNavigator.length < 687 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 0 }}>
