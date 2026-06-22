@@ -429,6 +429,61 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           ))}
         </div>
       )}
+      {isAutoRenewFlow && chipsReady && !isThinking && convStep === 0 && userMessages.length === 0 && (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {[
+            { label: 'Show me the 3 highest risk', scripted: false },
+            { label: 'What counts as high risk?', scripted: false },
+            { label: 'Yes, score by risk', scripted: true },
+          ].map(chip => (
+            <button
+              key={chip.label}
+              onMouseDown={(e) => { e.preventDefault(); if (chip.scripted) setInputValue('Yes, score by risk'); else setInputValue(chip.label); }}
+              style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {isAutoRenewFlow && chipsReady && !isThinking && convStep === 1 && userMessages.length === 1 && (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {[
+            { label: 'Focus on the High risk ones first', scripted: false },
+            { label: 'Yes, build the action list', scripted: true },
+          ].map(chip => (
+            <button
+              key={chip.label}
+              onMouseDown={(e) => { e.preventDefault(); if (chip.scripted) setInputValue('Yes, build the action list'); else setInputValue(chip.label); }}
+              style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {isAutoRenewFlow && chipsReady && !isThinking && convStep === 2 && userMessages.length === 2 && (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {[
+            { label: 'Add Contract Value', scripted: true },
+            { label: 'No, looks good', scripted: false },
+          ].map(chip => (
+            <button
+              key={chip.label}
+              onMouseDown={(e) => { e.preventDefault(); if (chip.scripted) setInputValue('Add Contract Value'); else setInputValue(chip.label); }}
+              style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 8px 8px 18px', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
         <input
           value={inputValue}
@@ -2582,19 +2637,26 @@ function AutoRenewAnswerBlock({ onContinue }: { onContinue: (msg: string) => voi
         I've identified <strong>8 contracts</strong> with auto-renewal clauses active within the next 45 days — and <strong>3 of them</strong> have price escalation tied to renewal. Want me to score them by risk level?
       </Text>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 8 }}>
-        <button
-          onClick={() => handle('Yes, score by risk')}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            background: 'var(--ink-purple-10, #f5f3ff)',
-            border: '1px solid var(--ink-purple-30, #ddd9ff)',
-            borderRadius: 100, padding: '5px 12px', fontSize: 12,
-            color: 'var(--ink-purple-100, #4B47C8)',
-            cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
-          }}
-        >
-          Yes, score by risk
-        </button>
+        {[
+          { label: 'Show me the 3 with price escalation', scripted: false },
+          { label: "What counts as high risk?", scripted: false },
+          { label: 'Yes, score by risk', scripted: true },
+        ].map((chip) => (
+          <button
+            key={chip.label}
+            onClick={() => chip.scripted ? handle('Yes, score by risk') : handle('')}
+            style={{
+              display: 'inline-flex', alignItems: 'center',
+              background: '#fff', border: '1px solid var(--ink-border-color-default)',
+              borderRadius: 100, padding: '5px 12px', fontSize: 12,
+              color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            {chip.label}
+          </button>
+        ))}
       </div>
       <InlineFollowUp onContinue={handle} chips={[]} prefill="Yes, score by risk" />
     </div>
