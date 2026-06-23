@@ -1016,7 +1016,33 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
 
             {followUp && followUpReady && (
               <Stack gap="small">
-                {followUp.toLowerCase().includes('expir') ? (
+                {(followUp.toLowerCase().includes('summar') || followUp.toLowerCase().includes('relationship')) ? (
+                  <>
+                    <Inline gap="xs" align="center">
+                      <Text size="xs" color="secondary">Summarizing relationship across 4 agreements</Text>
+                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                    </Inline>
+                    <Text size="sm" style={{ lineHeight: 1.65 }}>
+                      Acme Corp has been an active vendor for <strong>3+ years</strong> with <strong>4 agreements on record</strong>. Total committed spend is <strong>$225K/yr</strong> across an enterprise MSA, implementation SOW, NDA, and DPA. 2 agreements are approaching expiry within 90 days.
+                    </Text>
+                    <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                      {[
+                        { name: 'MSA - Acme Corp.pdf', detail: 'Enterprise license · $180K/yr', status: 'Active', color: 'var(--ink-text-secondary)' },
+                        { name: 'SOW - Acme Implementation.pdf', detail: 'Fixed-price · $45K', status: 'Expiring Aug 2026', color: '#D97706' },
+                        { name: 'NDA - Acme Corp.pdf', detail: 'No monetary value', status: 'Expiring Aug 2026', color: '#D97706' },
+                        { name: 'DPA - Acme Corp.pdf', detail: 'No expiry', status: 'Active', color: 'var(--ink-text-secondary)' },
+                      ].map((r, i) => (
+                        <div key={r.name} style={{ padding: '9px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <Text size="xs" style={{ fontWeight: 500 }}>{r.name}</Text>
+                            <Text size="xs" color="secondary" style={{ display: 'block' }}>{r.detail}</Text>
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 500, color: r.color }}>{r.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : followUp.toLowerCase().includes('expir') ? (
                   <>
                     <Inline gap="xs" align="center">
                       <Text size="xs" color="secondary">Checking expiration dates across agreements</Text>
@@ -1036,6 +1062,33 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-orange-80, #e67700)' }}>{r.daysLeft}</span>
                           </div>
                           <Text size="xs" color="secondary">{r.expires} · {r.notice}</Text>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : followUp.toLowerCase().includes('pric') ? (
+                  <>
+                    <Inline gap="xs" align="center">
+                      <Text size="xs" color="secondary">Extracting pricing terms from 2 agreements</Text>
+                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                    </Inline>
+                    <Text size="sm" style={{ lineHeight: 1.65 }}>
+                      Acme's active agreements carry a combined <strong>$225K/yr</strong> in committed spend. The MSA includes a <strong>3% annual price escalation clause</strong> (§8.2) starting Year 2. The SOW is fixed-price with no escalation.
+                    </Text>
+                    <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                      {[
+                        { agreement: 'MSA - Acme Corp.pdf', structure: 'Annual license', amount: '$180K/yr', escalation: '3% per year (§8.2)' },
+                        { agreement: 'SOW - Acme Implementation.pdf', structure: 'Fixed-price', amount: '$45K', escalation: 'None' },
+                      ].map((r, i) => (
+                        <div key={r.agreement} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text size="xs" style={{ fontWeight: 500 }}>{r.agreement}</Text>
+                            <Text size="xs" style={{ fontWeight: 600 }}>{r.amount}</Text>
+                          </div>
+                          <div style={{ display: 'flex', gap: 16 }}>
+                            <Text size="xs" color="secondary">Structure: {r.structure}</Text>
+                            <Text size="xs" color="secondary">Escalation: <span style={{ color: r.escalation !== 'None' ? '#D97706' : 'inherit' }}>{r.escalation}</span></Text>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -2157,137 +2210,173 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
   }, []);
 
   const chips = [
-    { label: 'When do these expire?', msg: 'When do these expire?' },
-    { label: 'What are the renewal terms?', msg: 'What are the renewal terms?' },
-    { label: 'Who owns these contracts?', msg: 'Who owns these contracts?' },
-    { label: 'Show payment terms', msg: 'Show payment terms' },
+    { label: 'Summarize my relationship with Acme', msg: 'Summarize my relationship with Acme' },
+    { label: "What's expiring soon?", msg: "What's expiring soon?" },
+    { label: 'Are there any special pricing terms?', msg: 'Are there any special pricing terms?' },
   ];
 
   const handleChip = (msg: string) => {
     if (collapsed) return;
     setActiveChip(msg);
     setSelectedMsg(msg);
-    // collapse card, then open Iris with slight overlap
     setTimeout(() => setCollapsed(true), 80);
     setTimeout(() => onChipSelect(msg), 150);
   };
+
+  const stats = [
+    { value: '3', label: 'Active agreements' },
+    { value: '2', label: 'Expiring soon', urgent: true },
+    { value: '0', label: 'Up for renewal' },
+  ];
 
   return (
     <div style={{
       marginBottom: 20,
       background: '#fff',
       border: '1px solid var(--ink-border-color-subtle)',
-      borderRadius: 12,
+      borderRadius: 8,
       overflow: 'hidden',
       opacity: visible ? 1 : 0,
       transform: visible ? 'translateY(0)' : 'translateY(6px)',
       transition: 'opacity 300ms cubic-bezier(0.33, 0, 0.67, 1), transform 300ms cubic-bezier(0.35, 0, 0.2, 1)',
     }}>
 
-      {/* Collapsed state — shown after chip selection, while Iris is open */}
+      {/* Collapsed pill — visible after chip selection */}
       <div style={{
         maxHeight: collapsed ? '52px' : '0px',
         opacity: collapsed ? 1 : 0,
         overflow: 'hidden',
         transition: 'max-height 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
       }}>
-        <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <IrisIcon />
-          <Text size="xs" color="secondary">Acme Corp · 4 agreements</Text>
+          <span style={{ fontSize: 13, color: 'var(--ink-text-secondary)' }}>Acme Corp · 4 agreements</span>
           {selectedMsg && (
             <span style={{
               fontSize: 12, color: 'var(--ink-text-secondary)',
               background: 'var(--ink-neutral-fade-05, #f7f7f9)',
               border: '1px solid var(--ink-border-color-subtle)',
               borderRadius: 100, padding: '2px 10px',
-            }}>
-              {selectedMsg}
-            </span>
+            }}>{selectedMsg}</span>
           )}
         </div>
       </div>
 
-      {/* Full card — shown before chip selection */}
+      {/* Full card */}
       <div style={{
-        maxHeight: collapsed ? '0px' : '500px',
+        maxHeight: collapsed ? '0px' : '700px',
         opacity: collapsed ? 0 : 1,
         overflow: 'hidden',
-        transition: 'max-height 350ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
+        transition: 'max-height 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
       }}>
-        {/* Always-visible body */}
-        <div style={{ padding: '20px 24px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
-            <IrisIcon />
-            <Text size="xs" color="secondary">Iris · 4 agreements found for "Acme"</Text>
-          </div>
-          <div style={{ fontSize: 17, fontWeight: 500, color: 'var(--ink-text-primary)', marginBottom: 14, lineHeight: 1.4 }}>
-            You're looking at contracts with <strong>Acme Corp</strong>
-          </div>
 
-          {/* Stats row — always visible */}
-          <div style={{
-            display: 'flex',
-            background: 'var(--ink-neutral-fade-03, #fafafa)',
-            border: '1px solid var(--ink-border-color-subtle)',
-            borderRadius: 10, overflow: 'hidden', marginBottom: 16,
-          }}>
-            {[
-              { label: 'Active contracts', value: '3' },
-              { label: 'Expiring < 90 days', value: '2', urgent: true },
-              { label: 'Committed spend', value: '$225K/yr' },
-            ].map((stat, i) => (
+        {/* Card header */}
+        <div style={{
+          padding: '14px 16px 12px',
+          borderBottom: '1px solid var(--ink-border-color-subtle)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-text-primary)', lineHeight: 1.3 }}>Acme Corp</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 2 }}>Party · 4 agreements on record</div>
+          </div>
+          <a
+            href="#"
+            onClick={(e) => e.preventDefault()}
+            style={{
+              fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)',
+              textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+          >
+            View parties page
+            <Icon name="external-link" size={11} color="var(--ink-purple-100, #4B47C8)" />
+          </a>
+        </div>
+
+        {/* Stats — "In the next 90 days" */}
+        <div style={{ borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+          <div style={{ padding: '10px 16px 6px', fontSize: 12, color: 'var(--ink-text-secondary)' }}>
+            In the next 90 days.
+          </div>
+          <div style={{ display: 'flex' }}>
+            {stats.map((stat, i) => (
               <div key={stat.label} style={{
-                flex: 1, padding: '10px 14px',
+                flex: 1, padding: '6px 16px 16px',
                 borderLeft: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none',
               }}>
-                <div style={{ fontSize: 11, color: 'var(--ink-text-secondary)', marginBottom: 3 }}>{stat.label}</div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: stat.urgent ? '#D97706' : 'var(--ink-text-primary)' }}>{stat.value}</div>
+                <div style={{
+                  fontSize: 30, fontWeight: 400, lineHeight: 1.15,
+                  color: stat.urgent ? '#D97706' : 'var(--ink-text-primary)',
+                  marginBottom: 4,
+                }}>{stat.value}</div>
+                <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)' }}>{stat.label}</div>
               </div>
-            ))}
-          </div>
-
-          <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', marginBottom: 12 }}>
-            What would you like to explore?
-          </div>
-
-          {/* Chips */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, paddingBottom: 18 }}>
-            {chips.map(chip => (
-              <button
-                key={chip.label}
-                onClick={() => handleChip(chip.msg)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center',
-                  background: '#fff',
-                  border: '1px solid var(--ink-border-color-default)',
-                  borderRadius: 100, padding: '6px 14px', fontSize: 13,
-                  color: 'var(--ink-text-primary)',
-                  cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
-                  transition: 'background 150ms ease, transform 100ms ease',
-                  transform: activeChip === chip.msg ? 'scale(0.95)' : 'scale(1)',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-              >
-                {chip.label}
-              </button>
             ))}
           </div>
         </div>
 
-        {/* Expandable section — inline ask input */}
+        {/* Explore with AI */}
         <div style={{
-          maxHeight: expanded ? '120px' : '0px',
+          padding: '14px 16px 16px',
+          background: 'var(--ink-purple-05, #f5f3ff)',
+          borderBottom: '1px solid var(--ink-border-color-subtle)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            {/* Icon — stacked docs with gradient tint, mirrors Parties page */}
+            <div style={{
+              width: 38, height: 38, borderRadius: 8, flexShrink: 0,
+              background: 'linear-gradient(135deg, #ede9ff 0%, #ddd5ff 100%)',
+              border: '1px solid var(--ink-purple-20, #d9d3ff)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <IrisIcon />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', marginBottom: 10 }}>
+                Explore with AI
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                {chips.map(chip => (
+                  <button
+                    key={chip.label}
+                    onClick={() => handleChip(chip.msg)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      background: '#fff',
+                      border: '1px solid var(--ink-border-color-default)',
+                      borderRadius: 100, padding: '6px 14px', fontSize: 13,
+                      color: 'var(--ink-text-primary)',
+                      cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
+                      transition: 'background 150ms ease, transform 100ms ease',
+                      transform: activeChip === chip.msg ? 'scale(0.95)' : 'scale(1)',
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Expandable — Ask anything input */}
+        <div style={{
+          maxHeight: expanded ? '100px' : '0px',
           opacity: expanded ? 1 : 0,
           overflow: 'hidden',
           transition: 'max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease',
         }}>
-          <div style={{ padding: '0 24px 20px' }}>
+          <div style={{ padding: '14px 16px' }}>
             <div style={{
               border: '1px solid var(--ink-border-color-default)',
               borderRadius: 100, padding: '8px 8px 8px 16px',
               background: '#fff', display: 'flex', alignItems: 'center', gap: 8,
-              boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
             }}>
               <input
                 placeholder="Ask anything about Acme..."
@@ -2313,7 +2402,7 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
           </div>
         </div>
 
-        {/* Divider + Show more / Show less */}
+        {/* Show more / Show less */}
         <div style={{ position: 'relative' }}>
           <div style={{ height: 1, background: 'var(--ink-border-color-subtle)' }} />
           <button
