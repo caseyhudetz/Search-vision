@@ -2864,7 +2864,7 @@ function AcmeAnswerCard({ onChipSelect, flowId }: { onChipSelect: (msg: string) 
   const [collapsedViaIris, setCollapsedViaIris] = useState(false);
   const [activeChip, setActiveChip] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
-  const chipInputRef = React.useRef<HTMLInputElement>(null);
+  const chipInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setVisible(true));
