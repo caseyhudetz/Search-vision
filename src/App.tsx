@@ -110,6 +110,10 @@ const tableRowStaggerStyles = `
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
 `;
 
 /* ═══════════════════════════════════════
@@ -180,70 +184,81 @@ function FadeIn({ children, keyProp: _keyProp }: { children: React.ReactNode; ke
    ═══════════════════════════════════════ */
 
 const SUGGESTED_QUESTIONS = [
-  { id: 'sq_current', icon: 'person' as const, query: 'Acme', description: 'Simple request · search by company or person name' },
-  { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'Future state · AI-guided analysis, risk identification, and structured worksheet' },
+  { id: 'sq_current', icon: 'person' as const, query: 'Acme', label: 'Simple Response' as string | undefined, description: 'Simple request · search by company or person name' },
+  { id: 'sq_deep', icon: 'chart-bar' as const, query: 'Acme', label: 'Products & Pricing' as string | undefined, description: 'Deep analysis · products, pricing, and terms across all agreements' },
+  { id: 'sq_finance', icon: 'currency-dollar' as const, query: 'Acme', label: 'Cost & Spend Analysis' as string | undefined, description: 'External operational data · Finance & ERP integration with actuals vs contract value' },
   { id: 'sq_autorenew', icon: 'bell' as const, query: 'Alert me to contracts at risk of auto-renewing', description: 'Future state v2 · Proactive monitoring, risk scoring, and recommended actions' },
+  { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'v1 · AI-guided analysis, risk identification, and structured worksheet' },
 ];
 
 function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) => void }) {
+  const SectionHeader = ({ label }: { label: string }) => (
+    <div style={{
+      padding: '10px 16px 5px',
+      fontSize: 10, fontWeight: 700, letterSpacing: '0.08em',
+      textTransform: 'uppercase' as const, color: 'var(--ink-text-secondary)',
+      borderTop: '1px solid var(--ink-border-color-subtle)',
+    }}>
+      {label}
+    </div>
+  );
+
+  const FlowItem = ({ q, badge }: { q: typeof SUGGESTED_QUESTIONS[0]; badge?: React.ReactNode }) => (
+    <button
+      onMouseDown={(e) => { e.preventDefault(); onSelect(q.query, q.id); }}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%',
+        padding: '9px 16px', background: 'none', border: 'none',
+        cursor: 'pointer', textAlign: 'left' as const,
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f7)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+    >
+      <Icon name={q.icon} size={15} color="var(--ink-text-secondary)" style={{ flexShrink: 0, marginTop: 2 }} />
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)', lineHeight: 1.4 }}>{q.label || q.query}</span>
+          {badge}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 2 }}>{q.description}</div>
+      </div>
+    </button>
+  );
+
+  const sq_current = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_current')!;
+  const sq_deep = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_deep')!;
+  const sq_finance = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_finance')!;
+  const sq_autorenew = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_autorenew')!;
+  const sq3 = SUGGESTED_QUESTIONS.find(q => q.id === 'sq3')!;
+
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid var(--ink-border-color-subtle)',
-      borderRadius: '8px',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
-      overflow: 'hidden',
+      background: '#fff', border: '1px solid var(--ink-border-color-subtle)',
+      borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.10)', overflow: 'hidden',
     }}>
-      <div style={{
-        padding: '10px 16px 6px',
-        fontSize: '10px',
-        fontWeight: 700,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: 'var(--ink-text-secondary)',
-      }}>
+      <div style={{ padding: '10px 16px 5px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-text-secondary)' }}>
         Demo Flows
       </div>
-      {SUGGESTED_QUESTIONS.map((q, i) => (
-        <button
-          key={q.id}
-          onMouseDown={(e) => { e.preventDefault(); onSelect(q.query, q.id); }}
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '12px',
-            width: '100%',
-            padding: '10px 16px',
-            background: 'none',
-            border: 'none',
-            borderTop: i === 0 ? 'none' : '1px solid var(--ink-border-color-subtle)',
-            cursor: 'pointer',
-            textAlign: 'left',
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f7)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-        >
-          <Icon name={q.icon} size={16} color="var(--ink-text-secondary)" style={{ flexShrink: 0, marginTop: 2 }} />
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--ink-text-primary)', lineHeight: 1.4 }}>{q.query}</span>
-              {q.id === 'sq3' && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-green-80, #2f9e44)', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-green-80, #2f9e44)', flexShrink: 0 }} />
-                  Future state
-                </span>
-              )}
-              {q.id === 'sq_autorenew' && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: '#fff', background: '#0E7490', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff', flexShrink: 0 }} />
-                  Future state v2
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--ink-text-secondary)', marginTop: '2px' }}>{q.description}</div>
-          </div>
-        </button>
-      ))}
+
+      <SectionHeader label="Search and Filter" />
+      <FlowItem q={sq_current} />
+
+      <SectionHeader label="Deep Analysis" />
+      <FlowItem q={sq_deep} />
+
+      <SectionHeader label="External Operational Data" />
+      <FlowItem q={sq_finance} />
+
+      <SectionHeader label="Archive" />
+      <FlowItem
+        q={sq3}
+        badge={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-green-80, #2f9e44)', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-green-80, #2f9e44)', flexShrink: 0 }} />
+            v1
+          </span>
+        }
+      />
     </div>
   );
 }
@@ -272,8 +287,8 @@ function IrisUserBubble({ text }: { text: string }) {
   );
 }
 
-function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetMode }: {
-  question: string; followUp?: string; onClose: () => void; onBuildWorksheet?: (type: string) => void; worksheetMode?: boolean;
+function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetMode, flowId }: {
+  question: string; followUp?: string; onClose: () => void; onBuildWorksheet?: (type: string) => void; worksheetMode?: boolean; flowId?: string;
 }) {
   const [inputValue, setInputValue] = useState('');
   const [mounted, setMounted] = useState(false);
@@ -281,8 +296,15 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   const [followUpReady, setFollowUpReady] = useState(false);
   const _qi = question.toLowerCase();
   const _isRenewalInit = followUp && ((_qi.includes('6 month') || _qi.includes('six month')) && (_qi.includes('expir') || _qi.includes('renew') || _qi.includes('vendor')));
+  const _isDeepInit = flowId === 'sq_deep' && !!followUp;
+  const _isFinanceInit = flowId === 'sq_finance' && !!followUp;
   const [convStep, setConvStep] = useState(_isRenewalInit ? 1 : 0);
-  const [userMessages, setUserMessages] = useState<string[]>(_isRenewalInit ? [followUp as string] : []);
+  const [userMessages, setUserMessages] = useState<string[]>(
+    _isDeepInit ? [followUp as string] : _isFinanceInit ? [followUp as string] : _isRenewalInit ? [followUp as string] : []
+  );
+  const [financeModalOpen, setFinanceModalOpen] = useState(false);
+  const [financeGranted, setFinanceGranted] = useState(false);
+  const [financeConnecting, setFinanceConnecting] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(420);
   const [initialReady, setInitialReady] = useState(false);
   const [cameFromAnswerBlock] = useState(!!_isRenewalInit);
@@ -345,6 +367,11 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
     return () => clearTimeout(t);
   }, [isThinking, initialReady]);
 
+  useEffect(() => {
+    if ((!_isDeepInit && !_isFinanceInit) || !followUpReady || convStep !== 0) return;
+    setConvStep(1);
+  }, [followUpReady]);
+
   const q = question.toLowerCase();
   const fq = (followUp || '').toLowerCase();
   const isPriceRaiseFlow = (q.includes('renewal') || q.includes('renew')) &&
@@ -355,7 +382,9 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
     (fq.includes('volume') || fq.includes('seat') || fq.includes('grown') || fq.includes('overcharged') || fq.includes('analyze') || fq.includes('growth') || fq.includes('over') || fq.includes('usage') || fq.includes('using'));
 
   const isSLAFlow = q.includes('software') && q.includes('sla');
-  const isPartyFlow = q.trim() === 'acme';
+  const isPartyFlow = flowId === 'sq_current';
+  const isDeepAnalysisFlow = flowId === 'sq_deep';
+  const isFinanceFlow = flowId === 'sq_finance';
   const isRenewalScanFlow = (q.includes('6 month') || q.includes('six month')) && (q.includes('expir') || q.includes('renew') || q.includes('vendor'));
   const isAutoRenewFlow = q.includes('auto-renew') || q.includes('alert me') || q.includes('auto renew');
 
@@ -368,6 +397,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
       if ((isPriceRaiseFlow || isVendorExposureFlow || isSLAFlow || isPartyFlow) && convStep === 0) setConvStep(1);
       if (isRenewalScanFlow && convStep < 3) setConvStep(convStep + 1);
       if (isAutoRenewFlow && convStep < 3) setConvStep(convStep + 1);
+      if (isDeepAnalysisFlow && convStep < 3) setConvStep(convStep + 1);
     }, 1300);
   };
 
@@ -484,7 +514,48 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           ))}
         </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 8px 8px 18px', background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+      {isDeepAnalysisFlow && chipsReady && !isThinking && convStep === 0 && userMessages.length === 0 && (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); setInputValue('What products or services do we purchase and how is pricing structured?'); }}
+            style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            What products or services do we purchase and how is pricing structured?
+          </button>
+        </div>
+      )}
+      {isDeepAnalysisFlow && chipsReady && !isThinking && convStep === 1 && userMessages.length === 1 && (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); setInputValue('Break down by pricing model and give examples'); }}
+            style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            Break down by pricing model and give examples
+          </button>
+        </div>
+      )}
+      {isDeepAnalysisFlow && chipsReady && !isThinking && convStep === 2 && userMessages.length === 2 && (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); setInputValue('Yes, set it up'); }}
+            style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            Yes, set it up
+          </button>
+        </div>
+      )}
+      {/* Input card — matches screenshot */}
+      <div style={{
+        border: '1px solid var(--ink-border-color-default)',
+        borderRadius: 14, padding: '12px 12px 10px',
+        background: '#fff', boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
+      }}>
         <input
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
@@ -500,18 +571,33 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               else if (convStep === 1 && userMessages.length === 1) setInputValue('Yes, build the action list');
               else if (convStep === 2 && userMessages.length === 2) setInputValue('Add Contract Value');
             }
+            if (!inputValue && isDeepAnalysisFlow) {
+              if (convStep === 0 && userMessages.length === 0) setInputValue('What products or services do we purchase and how is pricing structured?');
+              else if (convStep === 1 && userMessages.length === 1) setInputValue('Break down by pricing model and give examples');
+              else if (convStep === 2 && userMessages.length === 2) setInputValue('Yes, set it up');
+            }
           }}
-          placeholder="Ask a question..."
-          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+          placeholder="Type something..."
+          style={{ width: '100%', border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit', marginBottom: 10, display: 'block' }}
         />
-        <button onClick={handleSend} style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', cursor: inputValue.trim() ? 'pointer' : 'default', background: inputValue.trim() ? 'var(--ink-purple-100, #4B47C8)' : 'rgba(75,71,200,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 150ms', color: '#fff' }}>
-          <Icon name="arrow-up" size={15} color="#fff" />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--ink-border-color-default)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="plus" size={14} color="var(--ink-text-secondary)" />
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '3px 8px 3px 6px' }}>
+            <Icon name="document" size={12} color="var(--ink-text-secondary)" />
+            <span>{isRenewalScanFlow ? '42 agreements' : isAutoRenewFlow ? '8 agreements' : isDeepAnalysisFlow ? '23 agreements' : isFinanceFlow ? '10 agreements' : isPartyFlow ? '4 agreements' : '10 sources'}</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={handleSend} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: inputValue.trim() ? 'pointer' : 'default', background: 'var(--ink-purple-100, #4B47C8)', opacity: inputValue.trim() ? 1 : 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'opacity 150ms', color: '#fff' }}>
+            <Icon name="arrow-up" size={14} />
+          </button>
+        </div>
       </div>
-      <Text size="xs" color="secondary" style={{ marginTop: 6, textAlign: 'center', display: 'block', lineHeight: 1.4, fontStyle: 'italic' }}>
+      <div style={{ marginTop: 7, textAlign: 'center', fontSize: 11, color: 'var(--ink-text-secondary)', lineHeight: 1.4 }}>
         Responses are generated with AI and should not be used as legal advice.{' '}
         <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Learn how we use AI at Docusign.</span>
-      </Text>
+      </div>
     </div>
   );
 
@@ -972,10 +1058,363 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </div>
           {irisInputArea}
         </>
+      ) : isDeepAnalysisFlow ? (
+        /* ── Deep Analysis flow ── */
+        <>
+          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Step 0: user question */}
+            {userMessages.length >= 1 && <IrisUserBubble text={userMessages[0]} />}
+            {/* Thinking: pre-populated followUp waits for followUpReady; typed message waits for isThinking */}
+            {userMessages.length >= 1 && convStep === 0 && ((_isDeepInit && !followUpReady) || (!_isDeepInit && isThinking)) && <IrisThinkingBubble />}
+
+            {/* Step 1 response: products + pricing models */}
+            {convStep >= 1 && (
+              <Stack gap="small">
+                <Inline gap="xs" align="center">
+                  <Text size="xs" color="secondary">Scanning 23 Acme agreements</Text>
+                  <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                </Inline>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Across 23 Acme agreements, I found <strong>3 product/service categories</strong> and <strong>3 pricing models</strong> in use.
+                </Text>
+                <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--ink-border-color-subtle)', background: 'var(--ink-neutral-fade-05, #f7f7f9)' }}>
+                    <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Products & services found</Text>
+                  </div>
+                  {[
+                    { label: 'Cloud storage & hosting', count: 10, models: 'Volume-tiered' },
+                    { label: 'Managed IT support', count: 8, models: 'Flat fee, volume-tiered' },
+                    { label: 'Professional services', count: 5, models: 'Time & materials' },
+                  ].map((cat, i) => (
+                    <div key={cat.label} style={{ padding: '9px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <Text size="xs" style={{ fontWeight: 500 }}>{cat.label}</Text>
+                        <Text size="xs" color="secondary" style={{ display: 'block' }}>{cat.models}</Text>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-10, #f1f1f4)', borderRadius: 100, padding: '2px 8px' }}>{cat.count}</span>
+                    </div>
+                  ))}
+                </div>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+
+            {/* Step 2: user asks for pricing breakdown */}
+            {userMessages.length >= 2 && <IrisUserBubble text={userMessages[1]} />}
+            {isThinking && convStep === 1 && <IrisThinkingBubble />}
+
+            {/* Step 2 response: pricing model breakdown table */}
+            {convStep >= 2 && (
+              <Stack gap="small">
+                <Inline gap="xs" align="center">
+                  <Text size="xs" color="secondary">Extracting pricing terms from 23 agreements</Text>
+                  <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                </Inline>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Here's how pricing breaks down across all Acme agreements:
+                </Text>
+                <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 68px minmax(0, 1.8fr)', padding: '7px 14px', background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderBottom: '1px solid var(--ink-border-color-subtle)', gap: 16 }}>
+                    <Text size="xs" style={{ fontWeight: 600 }}>Pricing model</Text>
+                    <Text size="xs" style={{ fontWeight: 600 }}>Agreements</Text>
+                    <Text size="xs" style={{ fontWeight: 600 }}>Example</Text>
+                  </div>
+                  {[
+                    { model: 'Flat fee', count: 8, example: 'MSA — $180K/yr fixed annual license' },
+                    { model: 'Volume-tiered', count: 10, example: 'Cloud storage — price drops at 10TB, 50TB thresholds' },
+                    { model: 'Time & materials', count: 5, example: 'Professional services — $195/hr blended rate' },
+                  ].map((row, i) => (
+                    <div key={row.model} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 68px minmax(0, 1.8fr)', padding: '9px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', gap: 16, alignItems: 'center' }}>
+                      <Text size="xs" style={{ fontWeight: 500 }}>{row.model}</Text>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-text-secondary)' }}>{row.count}</span>
+                      <Text size="xs" color="secondary">{row.example}</Text>
+                    </div>
+                  ))}
+                </div>
+                <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
+                  Want to see exact prices and terms side by side? I can set up a comparison view.
+                </Text>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+
+            {/* Step 3: user confirms worksheet */}
+            {userMessages.length >= 3 && <IrisUserBubble text={userMessages[2]} />}
+            {isThinking && convStep === 2 && <IrisThinkingBubble />}
+
+            {/* Step 3 response: worksheet creation */}
+            {convStep >= 3 && !worksheetMode && (
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  On it. I'll pull together a pricing breakdown across all <strong>23 Acme agreements</strong>. Here's what I'll include:
+                </Text>
+                <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '12px 14px' }}>
+                  <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 8 }}>What I'll extract</Text>
+                  {[
+                    { label: 'Agreement name', ai: false },
+                    { label: 'Effective date', ai: false },
+                    { label: 'End date', ai: false },
+                    { label: 'Total contract value', ai: false },
+                    { label: 'Service / Offering', ai: true },
+                    { label: 'Pricing basis', ai: true },
+                    { label: 'Unit price', ai: true },
+                    { label: 'Discounts & special terms', ai: true },
+                  ].map((col, i) => (
+                    <div key={col.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                      <Icon name="check" size={12} color={col.ai ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-secondary)'} />
+                      <Text size="xs" style={{ flex: 1 }}>{col.label}</Text>
+                      {col.ai && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)', background: 'var(--ink-purple-05, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', borderRadius: 100, padding: '1px 7px' }}>AI</span>}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => onBuildWorksheet && onBuildWorksheet('deep-analysis')}
+                  style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#3d39b0'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'; }}
+                >
+                  <Icon name="table" size={14} color="#fff" />
+                  Start analysis
+                </button>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+            {convStep >= 3 && worksheetMode && (
+              <Stack gap="small">
+                <Text size="sm" color="secondary" style={{ lineHeight: 1.65 }}>The analysis is ready. You can view it in the panel on the left.</Text>
+              </Stack>
+            )}
+          </div>
+          {irisInputArea}
+        </>
+      ) : isFinanceFlow ? (
+        /* ── Finance / ERP flow ── */
+        <>
+          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Step 0: user question */}
+            {userMessages.length >= 1 && <IrisUserBubble text={userMessages[0]} />}
+            {userMessages.length >= 1 && convStep === 0 && ((_isFinanceInit && !followUpReady) || (!_isFinanceInit && isThinking)) && <IrisThinkingBubble />}
+
+            {/* Step 1: Finance consent offer */}
+            {convStep >= 1 && (
+              <Stack gap="small">
+                <Inline gap="xs" align="center">
+                  <Text size="xs" color="secondary">Checked Finance integration for your workspace</Text>
+                  <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                </Inline>
+                <div style={{ height: 4 }} />
+                <Text size="sm" style={{ lineHeight: 1.7 }}>
+                  I can see the contract values and billing terms for these Acme agreements in Agreement Manager.
+                </Text>
+                <div style={{ height: 2 }} />
+                <Text size="sm" style={{ lineHeight: 1.7 }}>
+                  To show <strong>project and cost center</strong> and <strong>how much has actually been spent</strong> — including discounts and penalties — I need read-only access to your Finance system (SAP).
+                </Text>
+                <div style={{ height: 4 }} />
+                <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '14px 16px' }}>
+                  <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>I'll only retrieve:</Text>
+                  {['Project and cost center mappings', 'Actual spend vs contract value', 'Applied discounts and penalties'].map(item => (
+                    <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                      <Icon name="check" size={13} color="var(--ink-green-80, #2f9e44)" />
+                      <Text size="sm" style={{ lineHeight: 1.5 }}>{item}</Text>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ height: 4 }} />
+                {!financeGranted && !financeModalOpen && (
+                  <Inline gap="small" align="center">
+                    <button
+                      onClick={() => setFinanceModalOpen(true)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      <Icon name="link" size={13} />
+                      Connect Finance
+                    </button>
+                    <button style={{ fontSize: 13, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>
+                      Continue with contract-only view
+                    </button>
+                  </Inline>
+                )}
+                {financeGranted && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>
+                    <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                    Finance connected
+                  </div>
+                )}
+
+                {/* Inline consent modal card */}
+                {financeModalOpen && (
+                  <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '20px', background: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', marginTop: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, paddingBottom: 16, borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Icon name="link" size={17} color="var(--ink-purple-100, #4B47C8)" />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3 }}>Connect Finance (read-only)</div>
+                        <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 2 }}>SAP Finance · Workspace integration</div>
+                      </div>
+                    </div>
+                    <Text size="sm" color="secondary" style={{ display: 'block', marginBottom: 10 }}>Iris will use your existing SAP Finance connection to read:</Text>
+                    <div style={{ marginBottom: 18 }}>
+                      {['Project and cost center for contracts you select', 'Actual spend vs contract value', 'Applied discounts and penalties'].map(item => (
+                        <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                          <Icon name="check" size={13} color="var(--ink-green-80, #2f9e44)" />
+                          <Text size="sm" style={{ lineHeight: 1.5 }}>{item}</Text>
+                        </div>
+                      ))}
+                    </div>
+                    <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Iris will not:</Text>
+                    <div style={{ marginBottom: 20 }}>
+                      {['Create or modify records', 'Approve invoices or POs'].map(item => (
+                        <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                          <Icon name="close" size={13} color="var(--ink-red-80, #c92a2a)" />
+                          <Text size="sm" color="secondary" style={{ lineHeight: 1.5 }}>{item}</Text>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        disabled={financeConnecting}
+                        onClick={() => {
+                          setFinanceConnecting(true);
+                          setTimeout(() => {
+                            setFinanceConnecting(false);
+                            setFinanceGranted(true);
+                            setFinanceModalOpen(false);
+                            setTimeout(() => {
+                              setIsThinking(true);
+                              setTimeout(() => { setIsThinking(false); setConvStep(2); }, 2200);
+                            }, 300);
+                          }, 2600);
+                        }}
+                        style={{ flex: 1, padding: '9px', fontSize: 13, fontWeight: 600, background: financeConnecting ? 'var(--ink-purple-60, #7B79D8)' : 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, cursor: financeConnecting ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 200ms' }}
+                      >
+                        {financeConnecting && (
+                          <span style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', display: 'inline-block', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
+                        )}
+                        {financeConnecting ? 'Connecting to SAP…' : 'Allow access'}
+                      </button>
+                      <button
+                        disabled={financeConnecting}
+                        onClick={() => setFinanceModalOpen(false)}
+                        style={{ padding: '9px 16px', fontSize: 13, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 6, cursor: financeConnecting ? 'default' : 'pointer', fontFamily: 'inherit', color: financeConnecting ? 'var(--ink-text-secondary)' : 'var(--ink-text-primary)', opacity: financeConnecting ? 0.5 : 1 }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div style={{ height: 8 }} />
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+
+            {/* Thinking between consent and data load */}
+            {isThinking && convStep === 1 && <IrisThinkingBubble />}
+
+            {/* Step 2: Financial summary */}
+            {convStep >= 2 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>
+                  <Icon name="status-check" size={13} color="var(--ink-green-80, #2f9e44)" />
+                  Finance connected for this workspace
+                </div>
+                <div style={{ borderTop: '1px solid var(--ink-border-color-subtle)', paddingTop: 14 }}>
+                  <Text size="sm" style={{ lineHeight: 1.7, display: 'block', marginBottom: 6 }}>
+                    Thanks — I'm pulling project, cost center, and spend data for your <strong>10 Acme agreements</strong>.
+                  </Text>
+                  <Text size="sm" style={{ lineHeight: 1.7 }}>Here's a summary:</Text>
+                </div>
+
+                {/* Projects & cost centers */}
+                <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '9px 16px', background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderBottom: '1px solid var(--ink-border-color-subtle)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--ink-text-secondary)' }}>
+                    Projects & cost centers
+                  </div>
+                  {[
+                    { project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', count: 6 },
+                    { project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', count: 4 },
+                  ].map((row, i) => (
+                    <div key={row.project} style={{ padding: '12px 16px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{row.project}</div>
+                      <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{row.costCenter} · {row.count} contracts</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Financials */}
+                <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '9px 16px', background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderBottom: '1px solid var(--ink-border-color-subtle)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--ink-text-secondary)' }}>
+                    Financials vs contract value
+                  </div>
+                  {[
+                    { label: 'Total contracted value', value: '$8.4M' },
+                    { label: 'Actual spend to date', value: '$6.1M', sub: '73% of TCV' },
+                    { label: 'Remaining value', value: '$2.3M' },
+                  ].map((row, i) => (
+                    <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 16px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                      <div>
+                        <div style={{ fontSize: 13, color: 'var(--ink-text-primary)' }}>{row.label}</div>
+                        {'sub' in row && row.sub && <div style={{ fontSize: 11, color: 'var(--ink-text-secondary)', marginTop: 2 }}>{row.sub}</div>}
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--ink-border-color-subtle)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <Text size="sm" style={{ lineHeight: 1.7 }}>
+                    <strong>Discounts applied:</strong> $420K across 3 contracts. One contract has a <strong style={{ color: 'var(--ink-orange-80, #d9480f)' }}>$75K penalty credit</strong> due to SLA breaches.
+                  </Text>
+                  <Text size="sm" style={{ lineHeight: 1.7 }}>
+                    I can break this down per contract or create a worksheet with all these fields so you can sort and filter.
+                  </Text>
+                </div>
+
+                {!worksheetMode && (
+                  <button
+                    onClick={() => onBuildWorksheet && onBuildWorksheet('finance-erp')}
+                    style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    <Icon name="table" size={14} />
+                    Open Worksheet
+                  </button>
+                )}
+                {worksheetMode && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
+                    <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                    <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Finance worksheet built — 10 agreements</Text>
+                  </div>
+                )}
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </div>
+            )}
+          </div>
+          {irisInputArea}
+        </>
       ) : isPartyFlow ? (
         /* ── Party relationship flow ── */
         <>
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ paddingBottom: 16, marginBottom: 4, borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+              <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--ink-purple-100, #4B47C8)', marginBottom: 3 }}>Hello, there</div>
+              <div style={{ fontSize: 15, color: 'var(--ink-text-primary)' }}>What would you like to know?</div>
+            </div>
             <IrisUserBubble text={question} />
             <Inline gap="xs" align="center">
               <Text size="xs" color="secondary">Read 4 Acme Corp agreements</Text>
@@ -1607,6 +2046,14 @@ const WORKSHEET_LOADING_LABELS: Record<string, { title: string; steps: string[] 
     title: 'Vendor Exposure Worksheet',
     steps: ['Reading Acme Corp agreements', 'Extracting volume metrics and MFN clauses', 'Calculating exposure summary'],
   },
+  'deep-analysis': {
+    title: 'Building your Acme pricing analysis…',
+    steps: ['Scoping to 23 Acme agreements', 'Extracting product and pricing data', 'Setting up comparison columns'],
+  },
+  'finance-erp': {
+    title: 'Building your Acme cost & spend analysis…',
+    steps: ['Reading 10 Acme agreements', 'Pulling project and cost center from SAP Finance', 'Reconciling actuals vs contract value'],
+  },
 };
 
 function WorksheetLoadingOverlay({ worksheetType }: { worksheetType: string }) {
@@ -1641,6 +2088,8 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
   const fade = useFadeIn(0, 250);
   const isRenewalView = worksheetType === 'renewal-scan';
   const isAutoRenewView = worksheetType === 'auto-renew-risk';
+  const isDeepAnalysisView = worksheetType === 'deep-analysis';
+  const isFinanceView = worksheetType === 'finance-erp';
 
   useEffect(() => {
     const t = setTimeout(() => setDataReady(true), 2400);
@@ -1956,9 +2405,199 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
     },
   ];
 
-  const viewTitle = isAutoRenewView ? 'Auto-Renewal Risk Tracker' : isRenewalView ? 'Vendor Renewals — Next 6 Months' : 'Acme Corp — Committed Spend & Usage';
-  const viewCrumb = isAutoRenewView ? 'Auto-Renewal Risk' : isRenewalView ? 'Renewal Analysis' : 'Vendor Exposure Analysis — Acme Corp';
-  const viewMeta = isAutoRenewView ? '8 agreements · Risk-prioritized · Created just now' : isRenewalView ? '42 agreements · Vendor renewals · Created just now' : '3 agreements · Acme Corp · Created just now';
+  /* ── Deep Analysis data ── */
+  const deepRows = [
+    { id: 'da1', fileName: 'MSA - Acme Cloud Platform.pdf', effectiveDate: 'Mar 1, 2022', endDate: 'Apr 26, 2027', contractValue: '$180,000/yr', serviceOffering: 'Cloud storage & hosting', pricingBasis: 'Annual flat fee', unitPrice: '$180K/yr', discounts: '3% annual escalation (§8.2)' },
+    { id: 'da2', fileName: 'SOW - Acme Managed IT Q1-2024.pdf', effectiveDate: 'Jan 1, 2024', endDate: 'Jun 30, 2024', contractValue: '$48,000', serviceOffering: 'Managed IT support', pricingBasis: 'Flat fee per quarter', unitPrice: '$48K/qtr', discounts: 'None' },
+    { id: 'da3', fileName: 'SOW - Acme Analytics Setup.pdf', effectiveDate: 'Feb 15, 2024', endDate: 'May 31, 2024', contractValue: '$62,400', serviceOffering: 'Professional services', pricingBasis: 'Time & materials', unitPrice: '$195/hr (blended)', discounts: 'Volume credit after 200 hrs' },
+    { id: 'da4', fileName: 'Enterprise - Acme DataStore.pdf', effectiveDate: 'Jun 1, 2023', endDate: 'May 31, 2026', contractValue: '$96,000/yr', serviceOffering: 'Cloud storage & hosting', pricingBasis: 'Volume-tiered', unitPrice: '$0.023/GB (10TB tier)', discounts: '5% multi-year discount' },
+    { id: 'da5', fileName: 'SOW - Acme Managed IT Q2-2024.pdf', effectiveDate: 'Jul 1, 2024', endDate: 'Dec 31, 2024', contractValue: '$52,000', serviceOffering: 'Managed IT support', pricingBasis: 'Flat fee per quarter', unitPrice: '$52K/qtr', discounts: 'None' },
+    { id: 'da6', fileName: 'SOW - Acme Data Migration.pdf', effectiveDate: 'Sep 5, 2024', endDate: 'Feb 28, 2025', contractValue: '$38,000', serviceOffering: 'Professional services', pricingBasis: 'Time & materials', unitPrice: '$195/hr (blended)', discounts: 'None' },
+    { id: 'da7', fileName: 'Cloud Backup SLA - Acme.pdf', effectiveDate: 'Apr 1, 2023', endDate: 'Mar 31, 2026', contractValue: '$28,800/yr', serviceOffering: 'Cloud storage & hosting', pricingBasis: 'Volume-tiered', unitPrice: '$0.019/GB (50TB tier)', discounts: '10% prepay discount' },
+    { id: 'da8', fileName: 'SOW - Acme IT Help Desk.pdf', effectiveDate: 'Jan 1, 2025', endDate: 'Dec 31, 2025', contractValue: '$72,000', serviceOffering: 'Managed IT support', pricingBasis: 'Flat fee per month', unitPrice: '$6K/mo', discounts: 'None' },
+    { id: 'da9', fileName: 'Professional Services - Acme AI.pdf', effectiveDate: 'Mar 1, 2025', endDate: 'Aug 31, 2025', contractValue: '$41,600', serviceOffering: 'Professional services', pricingBasis: 'Time & materials', unitPrice: '$200/hr (senior rate)', discounts: 'Fixed cap $41,600' },
+    { id: 'da10', fileName: 'SOW - Acme Cloud Ops 2025.pdf', effectiveDate: 'Jun 1, 2025', endDate: 'May 31, 2026', contractValue: '$55,200/yr', serviceOffering: 'Managed IT support', pricingBasis: 'Flat fee', unitPrice: '$55.2K/yr', discounts: 'None' },
+  ];
+
+  const deepColumns = [
+    {
+      key: 'fileName',
+      header: 'Agreement',
+      cell: (row: typeof deepRows[0]) => (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--ink-neutral-fade-05, #f5f5f8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="document" size={14} color="var(--ink-text-secondary)" />
+          </div>
+          <span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)', display: 'block', lineHeight: 1.3 }}>{row.fileName}</span>
+            <span style={{ fontSize: 11, color: 'var(--ink-text-secondary)', display: 'block', marginTop: 1 }}>Acme Corp · Completed</span>
+          </span>
+        </span>
+      ),
+      width: '270px',
+    },
+    {
+      key: 'effectiveDate',
+      header: 'Effective',
+      cell: (row: typeof deepRows[0]) => <span style={{ fontSize: 13 }}>{row.effectiveDate}</span>,
+      width: '120px',
+    },
+    {
+      key: 'endDate',
+      header: 'End date',
+      cell: (row: typeof deepRows[0]) => <span style={{ fontSize: 13 }}>{row.endDate}</span>,
+      width: '120px',
+    },
+    {
+      key: 'contractValue',
+      header: 'Contract value',
+      cell: (row: typeof deepRows[0]) => <span style={{ fontSize: 13 }}>{row.contractValue}</span>,
+      width: '130px',
+    },
+    {
+      key: 'serviceOffering',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Service / Offering</span>
+        </span>
+      ),
+      cell: (row: typeof deepRows[0]) => aiCell(row.serviceOffering, '85%'),
+      width: '200px',
+    },
+    {
+      key: 'pricingBasis',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Pricing basis</span>
+        </span>
+      ),
+      cell: (row: typeof deepRows[0]) => aiCell(row.pricingBasis, '80%'),
+      width: '170px',
+    },
+    {
+      key: 'unitPrice',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Unit price</span>
+        </span>
+      ),
+      cell: (row: typeof deepRows[0]) => aiCell(row.unitPrice, '70%'),
+      width: '170px',
+    },
+    {
+      key: 'discounts',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Discounts & special terms</span>
+        </span>
+      ),
+      cell: (row: typeof deepRows[0]) => aiCell(row.discounts, '75%'),
+      width: '220px',
+    },
+    {
+      key: 'addCol',
+      header: (
+        <button style={{ background: 'none', border: '1px dashed var(--ink-border-color-default)', borderRadius: 6, cursor: 'pointer', padding: '3px 10px', color: 'var(--ink-text-secondary)', fontSize: 16, fontWeight: 400, lineHeight: 1.2, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }} title="Add column">
+          <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+          <span style={{ fontSize: 12 }}>Add column</span>
+        </button>
+      ),
+      cell: () => null,
+      width: '120px',
+    },
+  ];
+
+  /* ── Finance / ERP data ── */
+  const financeRows = [
+    { id: 'fn1', fileName: 'MSA - Acme Corp.pdf', type: 'MSA', effectiveDate: 'Apr 26, 2022', endDate: 'Apr 26, 2027', contractValue: '$180,000/yr', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '$162,000', variance: '-$18,000', notes: '10% volume discount applied' },
+    { id: 'fn2', fileName: 'SOW - Acme Implementation.pdf', type: 'SOW', effectiveDate: 'Jan 15, 2024', endDate: 'Aug 18, 2026', contractValue: '$45,000', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '$45,000', variance: '$0', notes: 'Fully invoiced' },
+    { id: 'fn3', fileName: 'NDA - Acme Corp.pdf', type: 'NDA', effectiveDate: 'Apr 26, 2022', endDate: 'Aug 18, 2026', contractValue: '—', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '—', variance: '—', notes: 'No financial terms' },
+    { id: 'fn4', fileName: 'DPA - Acme Corp.pdf', type: 'DPA', effectiveDate: 'Apr 26, 2022', endDate: '—', contractValue: '—', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '—', variance: '—', notes: 'No financial terms' },
+    { id: 'fn5', fileName: 'Enterprise - Acme DataStore.pdf', type: 'License', effectiveDate: 'Jun 1, 2023', endDate: 'May 31, 2026', contractValue: '$96,000/yr', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$88,400', variance: '-$7,600', notes: '5% multi-year discount' },
+    { id: 'fn6', fileName: 'SOW - Acme Managed IT Q2-2024.pdf', type: 'SOW', effectiveDate: 'Jul 1, 2024', endDate: 'Dec 31, 2024', contractValue: '$52,000', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$52,000', variance: '$0', notes: 'Fully invoiced' },
+    { id: 'fn7', fileName: 'SOW - Acme Data Migration.pdf', type: 'SOW', effectiveDate: 'Sep 5, 2024', endDate: 'Feb 28, 2025', contractValue: '$38,000', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$41,200', variance: '+$3,200', notes: '$3.2K overage — approved' },
+    { id: 'fn8', fileName: 'Cloud Backup SLA - Acme.pdf', type: 'SLA', effectiveDate: 'Apr 1, 2023', endDate: 'Mar 31, 2026', contractValue: '$28,800/yr', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$19,600', variance: '-$9,200', notes: '$75K SLA penalty credit pending' },
+    { id: 'fn9', fileName: 'SOW - Acme IT Help Desk.pdf', type: 'SOW', effectiveDate: 'Jan 1, 2025', endDate: 'Dec 31, 2025', contractValue: '$72,000', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$54,000', variance: '-$18,000', notes: 'In progress — 75% complete' },
+    { id: 'fn10', fileName: 'SOW - Acme Cloud Ops 2025.pdf', type: 'SOW', effectiveDate: 'Jun 1, 2025', endDate: 'May 31, 2026', contractValue: '$55,200/yr', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$27,600', variance: '-$27,600', notes: '6 months remaining' },
+  ];
+
+  const ERP_BADGE = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700, background: 'var(--ink-green-10, #f3faf4)', color: 'var(--ink-green-80, #2f9e44)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 3, padding: '1px 5px', verticalAlign: 'middle', marginLeft: 5, lineHeight: 1.4 }}>
+      ERP
+    </span>
+  );
+
+  const financeColumns = [
+    {
+      key: 'fileName',
+      header: 'Agreement',
+      cell: (row: typeof financeRows[0]) => (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--ink-neutral-fade-05, #f5f5f8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="document" size={14} color="var(--ink-text-secondary)" />
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{row.fileName}</span>
+        </span>
+      ),
+      width: '220px',
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      cell: (row: typeof financeRows[0]) => <span style={{ fontSize: 13 }}>{row.type}</span>,
+      width: '60px',
+    },
+    {
+      key: 'contractValue',
+      header: 'Contract Value',
+      cell: (row: typeof financeRows[0]) => <span style={{ fontSize: 13 }}>{row.contractValue}</span>,
+      width: '120px',
+    },
+    {
+      key: 'project',
+      header: <span>Project{ERP_BADGE}</span>,
+      cell: (row: typeof financeRows[0]) => dataReady ? <span style={{ fontSize: 13 }}>{row.project}</span> : <div className="answer-skeleton-line" style={{ height: 13, width: '80%', borderRadius: 3 }} />,
+      width: '200px',
+    },
+    {
+      key: 'costCenter',
+      header: <span>Cost Center{ERP_BADGE}</span>,
+      cell: (row: typeof financeRows[0]) => dataReady ? <span style={{ fontSize: 13 }}>{row.costCenter}</span> : <div className="answer-skeleton-line" style={{ height: 13, width: '75%', borderRadius: 3 }} />,
+      width: '170px',
+    },
+    {
+      key: 'actualSpend',
+      header: <span>Actual Spend{ERP_BADGE}</span>,
+      cell: (row: typeof financeRows[0]) => dataReady ? <span style={{ fontSize: 13 }}>{row.actualSpend}</span> : <div className="answer-skeleton-line" style={{ height: 13, width: '60%', borderRadius: 3 }} />,
+      width: '110px',
+    },
+    {
+      key: 'variance',
+      header: <span>Variance{ERP_BADGE}</span>,
+      cell: (row: typeof financeRows[0]) => {
+        if (!dataReady) return <div className="answer-skeleton-line" style={{ height: 13, width: '50%', borderRadius: 3 }} />;
+        const isOver = row.variance.startsWith('+');
+        const isNeutral = row.variance === '$0' || row.variance === '—';
+        const color = isOver ? 'var(--ink-orange-80, #d9480f)' : isNeutral ? 'var(--ink-text-secondary)' : 'var(--ink-green-80, #2f9e44)';
+        return <span style={{ fontSize: 13, color, fontWeight: isOver ? 600 : 400 }}>{row.variance}</span>;
+      },
+      width: '100px',
+    },
+    {
+      key: 'notes',
+      header: <span>Notes{ERP_BADGE}</span>,
+      cell: (row: typeof financeRows[0]) => dataReady ? <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{row.notes}</span> : <div className="answer-skeleton-line" style={{ height: 13, width: '85%', borderRadius: 3 }} />,
+      width: '180px',
+    },
+  ];
+
+  const viewTitle = isFinanceView ? 'Acme Corp — Cost & Spend Analysis' : isDeepAnalysisView ? 'Acme Corp — Products & Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk Tracker' : isRenewalView ? 'Vendor Renewals — Next 6 Months' : 'Acme Corp — Committed Spend & Usage';
+  const viewCrumb = isFinanceView ? 'Cost & Spend Analysis' : isDeepAnalysisView ? 'Acme Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk' : isRenewalView ? 'Renewal Analysis' : 'Vendor Exposure Analysis — Acme Corp';
+  const viewMeta = isFinanceView ? '10 agreements · Acme Corp · SAP Finance · Created just now' : isDeepAnalysisView ? '23 agreements · Acme Corp · Created just now' : isAutoRenewView ? '8 agreements · Risk-prioritized · Created just now' : isRenewalView ? '42 agreements · Vendor renewals · Created just now' : '3 agreements · Acme Corp · Created just now';
 
   return (
     <div {...fade} style={{ ...fade.style, display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
@@ -1975,7 +2614,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ink-purple-10, #f5f3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name={isAutoRenewView ? 'bell' : isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
+            <Icon name={isFinanceView ? 'currency-dollar' : isDeepAnalysisView ? 'chart-bar' : isAutoRenewView ? 'bell' : isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
           </div>
           <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, color: 'var(--ink-text-primary)', lineHeight: 1.2 }}>{viewTitle}</h1>
         </div>
@@ -2012,7 +2651,29 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
 
       {/* Table — matches AgreementTableView .tableWrapper margin */}
       <div style={{ flex: 1, margin: '0 80px', minHeight: 0 }}>
-        {isAutoRenewView ? (
+        {isFinanceView ? (
+          <DataTable
+            columns={financeColumns}
+            data={financeRows}
+            getRowKey={(row) => row.id}
+            stickyHeader
+            rowHeight="tall"
+            selectable
+            showColumnControl
+            pagination={{ page: 1, pageSize: 50, totalItems: financeRows.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }}
+          />
+        ) : isDeepAnalysisView ? (
+          <DataTable
+            columns={deepColumns}
+            data={deepRows}
+            getRowKey={(row) => row.id}
+            stickyHeader
+            rowHeight="tall"
+            selectable
+            showColumnControl
+            pagination={{ page: 1, pageSize: 50, totalItems: deepRows.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }}
+          />
+        ) : isAutoRenewView ? (
           <DataTable
             columns={autoRenewColumns}
             data={autoRenewRows}
@@ -2197,30 +2858,49 @@ function WorksheetModal({ onClose, worksheetType = 'renewals' }: { onClose: () =
    Acme Answer Card (current-state entity card)
    ═══════════════════════════════════════ */
 
-function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void }) {
+function AcmeAnswerCard({ onChipSelect, flowId }: { onChipSelect: (msg: string) => void; flowId?: string }) {
   const [visible, setVisible] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [selectedMsg, setSelectedMsg] = useState<string | null>(null);
+  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
   const [activeChip, setActiveChip] = useState<string | null>(null);
+  const [textInput, setTextInput] = useState('');
+  const chipInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  const handleTextSubmit = () => {
+    const val = textInput.trim();
+    if (!val) return;
+    setCollapsedViaIris(true);
+    setTextInput('');
+    setTimeout(() => setCollapsed(true), 80);
+    setTimeout(() => onChipSelect(val), 150);
+  };
+
   const chips = [
     { label: 'Summarize my relationship with Acme', msg: 'Summarize my relationship with Acme' },
     { label: "What's expiring soon?", msg: "What's expiring soon?" },
-    { label: 'Are there any special pricing terms?', msg: 'Are there any special pricing terms?' },
+    { label: 'What products and services do we purchase from this vendor?', msg: 'What products and services do we purchase from this vendor?' },
   ];
 
+  const FINANCE_MSG = "For these Acme contracts, show the project and cost center they're tied to, and how much we've actually spent vs the contract value, including any discounts or penalties.";
+
   const handleChip = (msg: string) => {
-    if (collapsed) return;
     setActiveChip(msg);
-    setSelectedMsg(msg);
-    setTimeout(() => setCollapsed(true), 80);
-    setTimeout(() => onChipSelect(msg), 150);
+    setTextInput(msg);
+    setTimeout(() => { chipInputRef.current?.focus(); chipInputRef.current?.select(); }, 30);
   };
+
+  if (collapsed) return (
+    <CollapsedAnswerBar
+      summary="Acme Corp · 4 agreements · $225K/yr committed spend"
+      onExpand={() => { setCollapsed(false); setCollapsedViaIris(false); }}
+      irisActive={collapsedViaIris}
+    />
+  );
 
   return (
     <div style={{
@@ -2234,142 +2914,258 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
       transition: 'opacity 300ms cubic-bezier(0.33, 0, 0.67, 1), transform 300ms cubic-bezier(0.35, 0, 0.2, 1)',
     }}>
 
-      {/* Collapsed pill — visible after chip selection */}
-      <div style={{
-        maxHeight: collapsed ? '52px' : '0px',
-        opacity: collapsed ? 1 : 0,
-        overflow: 'hidden',
-        transition: 'max-height 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
-      }}>
-        <div style={{ padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <IrisIcon />
-          <span style={{ fontSize: 13, color: 'var(--ink-text-secondary)' }}>Acme Corp · 4 agreements</span>
-          {selectedMsg && (
-            <span style={{
-              fontSize: 12, color: 'var(--ink-text-secondary)',
-              background: 'var(--ink-neutral-fade-05, #f7f7f9)',
-              border: '1px solid var(--ink-border-color-subtle)',
-              borderRadius: 100, padding: '2px 10px',
-            }}>{selectedMsg}</span>
-          )}
+      {/* Header */}
+      <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 2 }}>
+          <a
+            href="#"
+            onClick={(e) => e.preventDefault()}
+            style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink-text-primary)', textDecoration: 'none', lineHeight: 1.3 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+          >
+            Acme Corp
+          </a>
+          <button
+            onClick={() => setCollapsed(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', marginTop: 2, flexShrink: 0 }}
+          >
+            <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
+          </button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 10 }}>
+          Party · 4 agreements on record
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>
+          An established software vendor with a 3-year relationship. $225K/yr in committed spend across an MSA, SOW, NDA, and DPA. 2 agreements are coming up for action before Q3.
         </div>
       </div>
 
-      {/* Full card */}
-      <div style={{
-        maxHeight: collapsed ? '0px' : '700px',
-        opacity: collapsed ? 0 : 1,
-        overflow: 'hidden',
-        transition: 'max-height 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
-      }}>
+      {/* Stats */}
+      <div style={{ borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+        <div style={{ padding: '8px 16px 4px', fontSize: 11, color: 'var(--ink-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>
+          In the next 90 days
+        </div>
+        <div style={{ display: 'flex' }}>
+          {[
+            { value: '4', label: 'Active agreements' },
+            { value: '2', label: 'Expiring soon', urgent: true },
+            { value: '1', label: 'Up for renewal' },
+          ].map((stat, i) => (
+            <div key={stat.label} style={{ flex: 1, padding: '6px 16px 12px', borderLeft: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+              <div style={{ fontSize: 26, fontWeight: 400, lineHeight: 1.1, color: stat.urgent ? '#D97706' : 'var(--ink-text-primary)', marginBottom: 3 }}>{stat.value}</div>
+              <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
 
-        {/* Header: name (linked) + party info + summary */}
-        <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 2 }}>
+      {/* Ask a follow up */}
+      <div style={{ padding: '12px 16px 14px', background: 'var(--ink-purple-05, #f5f3ff)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+            background: 'linear-gradient(135deg, #ede9ff 0%, #ddd5ff 100%)',
+            border: '1px solid var(--ink-purple-20, #d9d3ff)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <IrisIcon />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', marginBottom: 8 }}>
+              Ask a follow up
+            </div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' as const, marginBottom: 10 }}>
+              {chips.map(chip => (
+                <button
+                  key={chip.label}
+                  onClick={() => handleChip(chip.msg)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center',
+                    background: '#fff',
+                    border: '1px solid var(--ink-border-color-default)',
+                    borderRadius: 100, padding: '5px 12px', fontSize: 12,
+                    color: 'var(--ink-text-primary)',
+                    cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
+                    transition: 'background 150ms ease, transform 100ms ease',
+                    transform: activeChip === chip.msg ? 'scale(0.95)' : 'scale(1)',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 5px 5px 14px' }}>
+              <input
+                ref={chipInputRef}
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                onFocus={() => { if (flowId === 'sq_finance' && !textInput) setTextInput(FINANCE_MSG); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleTextSubmit(); }}
+                placeholder={flowId === 'sq_finance' ? 'Show project, cost center & actual spend…' : 'Ask something about Acme...'}
+                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+              />
+              <button
+                onClick={handleTextSubmit}
+                style={{
+                  width: 28, height: 28, borderRadius: '50%', border: 'none',
+                  cursor: textInput.trim() ? 'pointer' : 'default',
+                  background: 'var(--ink-purple-100, #4B47C8)',
+                  opacity: textInput.trim() ? 1 : 0.38,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, transition: 'opacity 150ms', color: '#fff',
+                }}
+              >
+                <Icon name="arrow-up" size={13} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+function DeepAnalysisAnswerCard({ onCTA }: { onCTA: () => void }) {
+  const [visible, setVisible] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [ctaClicked, setCtaClicked] = useState(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setVisible(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const handleCTA = () => {
+    setCtaClicked(true);
+    setCollapsed(true);
+    setTimeout(() => onCTA(), 150);
+  };
+
+  if (collapsed) return (
+    <CollapsedAnswerBar
+      summary="23 Acme agreements · 3 product categories · Pricing analysis"
+      onExpand={() => { setCollapsed(false); setCtaClicked(false); }}
+      irisActive={ctaClicked}
+    />
+  );
+
+  const categories = [
+    { label: 'Cloud storage & hosting', count: 10 },
+    { label: 'Managed IT support', count: 8 },
+    { label: 'Professional services', count: 5 },
+  ];
+
+  return (
+    <div style={{
+      marginBottom: 20,
+      background: '#fff',
+      border: '1px solid var(--ink-border-color-subtle)',
+      borderRadius: 8,
+      overflow: 'hidden',
+      opacity: visible ? 1 : 0,
+      transform: visible ? 'translateY(0)' : 'translateY(6px)',
+      transition: 'opacity 300ms cubic-bezier(0.33, 0, 0.67, 1), transform 300ms cubic-bezier(0.35, 0, 0.2, 1)',
+    }}>
+
+      {/* Header */}
+      <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 2 }}>
+          <div>
             <a
               href="#"
               onClick={(e) => e.preventDefault()}
-              style={{
-                fontSize: 16, fontWeight: 600, color: 'var(--ink-text-primary)',
-                textDecoration: 'none', lineHeight: 1.3,
-              }}
+              style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink-text-primary)', textDecoration: 'none', lineHeight: 1.3 }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
             >
               Acme Corp
             </a>
-            <a
-              href="#"
-              onClick={(e) => e.preventDefault()}
-              style={{
-                fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)',
-                textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
-                flexShrink: 0, marginTop: 2,
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
-            >
-              View parties page
-              <Icon name="external-link" size={11} color="var(--ink-purple-100, #4B47C8)" />
-            </a>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 10 }}>
-            Party · 4 agreements on record
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>
-            An established software vendor with a 3-year relationship. $225K/yr in committed spend across an MSA, SOW, NDA, and DPA. 2 agreements are coming up for action before Q3.
-          </div>
+          <button
+            onClick={() => setCollapsed(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', marginTop: 2, flexShrink: 0 }}
+          >
+            <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
+          </button>
         </div>
-
-        {/* Stats — "In the next 90 days" */}
-        <div style={{ borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
-          <div style={{ padding: '8px 16px 4px', fontSize: 11, color: 'var(--ink-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>
-            In the next 90 days
-          </div>
-          <div style={{ display: 'flex' }}>
-            {[
-              { value: '3', label: 'Active agreements' },
-              { value: '2', label: 'Expiring soon', urgent: true },
-              { value: '0', label: 'Up for renewal' },
-            ].map((stat, i) => (
-              <div key={stat.label} style={{
-                flex: 1,
-                padding: '6px 16px 12px',
-                borderLeft: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none',
-              }}>
-                <div style={{
-                  fontSize: 26, fontWeight: 400, lineHeight: 1.1,
-                  color: stat.urgent ? '#D97706' : 'var(--ink-text-primary)',
-                  marginBottom: 3,
-                }}>{stat.value}</div>
-                <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{stat.label}</div>
-              </div>
-            ))}
-          </div>
+        <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 10 }}>
+          Party · 23 agreements on record
         </div>
-
-        {/* Explore with AI — always visible, no toggle */}
-        <div style={{ padding: '12px 16px 14px', background: 'var(--ink-purple-05, #f5f3ff)' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-              background: 'linear-gradient(135deg, #ede9ff 0%, #ddd5ff 100%)',
-              border: '1px solid var(--ink-purple-20, #d9d3ff)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <IrisIcon />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', marginBottom: 8 }}>
-                Explore with AI
-              </div>
-              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' as const }}>
-                {chips.map(chip => (
-                  <button
-                    key={chip.label}
-                    onClick={() => handleChip(chip.msg)}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      background: '#fff',
-                      border: '1px solid var(--ink-border-color-default)',
-                      borderRadius: 100, padding: '5px 12px', fontSize: 12,
-                      color: 'var(--ink-text-primary)',
-                      cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
-                      transition: 'background 150ms ease, transform 100ms ease',
-                      transform: activeChip === chip.msg ? 'scale(0.95)' : 'scale(1)',
-                    }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+        <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>
+          An established software vendor with a 3-year relationship spanning IT infrastructure, cloud services, and professional services engagements.
         </div>
-
       </div>
+
+      {/* Product categories */}
+      <div style={{ borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+        <div style={{ padding: '8px 16px 6px', fontSize: 11, color: 'var(--ink-text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', fontWeight: 500 }}>
+          Products & services
+        </div>
+        {categories.map((cat, i) => (
+          <div
+            key={cat.label}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '7px 16px',
+              borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none',
+            }}
+          >
+            <span style={{ fontSize: 13, color: 'var(--ink-text-primary)' }}>{cat.label}</span>
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--ink-text-secondary)',
+              background: 'var(--ink-neutral-fade-10, #f1f1f4)',
+              borderRadius: 100, padding: '2px 8px',
+            }}>
+              {cat.count} agreements
+            </span>
+          </div>
+        ))}
+        <div style={{ height: 8 }} />
+      </div>
+
+      {/* AI CTA */}
+      <div style={{ padding: '12px 16px 14px', background: 'var(--ink-purple-05, #f5f3ff)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: 8, flexShrink: 0,
+            background: 'linear-gradient(135deg, #ede9ff 0%, #ddd5ff 100%)',
+            border: '1px solid var(--ink-purple-20, #d9d3ff)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <IrisIcon />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', marginBottom: 4 }}>
+              Analyze products, pricing, and terms
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 10 }}>
+              Ask questions across all 23 Acme agreements
+            </div>
+            <button
+              onClick={handleCTA}
+              style={{
+                display: 'inline-flex', alignItems: 'center',
+                background: ctaClicked ? 'var(--ink-purple-05, #f5f3ff)' : '#fff',
+                border: '1px solid var(--ink-border-color-default)',
+                borderRadius: 100, padding: '5px 12px', fontSize: 12,
+                color: 'var(--ink-text-primary)',
+                cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
+                transition: 'background 150ms ease, transform 100ms ease',
+                transform: ctaClicked ? 'scale(0.95)' : 'scale(1)',
+              }}
+              onMouseEnter={(e) => { if (!ctaClicked) (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; }}
+              onMouseLeave={(e) => { if (!ctaClicked) (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              Start analysis
+            </button>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }
@@ -3210,9 +4006,9 @@ const NAVIGATOR_SLA: NavigatorAgreement[] = [
 
 const NAVIGATOR_ACME: NavigatorAgreement[] = [
   { id: 'ac1', fileName: 'MSA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Acme Corp'], status: 'active', agreementType: 'MSA', contractValue: '$180,000/yr', expirationDate: 'Apr 26, 2027', effectiveDate: '4/26/2022', isAIAssisted: true },
-  { id: 'ac2', fileName: 'SOW - Acme Implementation.pdf', fileStatus: 'completed', fileStatusDetail: 'Fixed scope project', parties: ['Acme Corp'], status: 'active', agreementType: 'SOW', contractValue: '$45,000', effectiveDate: '1/15/2024', isAIAssisted: true },
-  { id: 'ac3', fileName: 'DPA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Data processing addendum', parties: ['Acme Corp'], status: 'active', agreementType: 'DPA', effectiveDate: '4/26/2022', isAIAssisted: false },
-  { id: 'ac4', fileName: 'Order Form - Acme Corp (2023).pdf', fileStatus: 'completed', fileStatusDetail: 'Renewal order form', parties: ['Acme Corp'], status: 'inactive', agreementType: 'Order Form', contractValue: '$155,000/yr', expirationDate: 'Apr 25, 2023', effectiveDate: '4/26/2021', isAIAssisted: false },
+  { id: 'ac2', fileName: 'SOW - Acme Implementation.pdf', fileStatus: 'completed', fileStatusDetail: 'Fixed scope project', parties: ['Acme Corp'], status: 'active', agreementType: 'SOW', contractValue: '$45,000', expirationDate: 'Aug 18, 2026', effectiveDate: '1/15/2024', isAIAssisted: true },
+  { id: 'ac3', fileName: 'NDA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Mutual non-disclosure', parties: ['Acme Corp'], status: 'active', agreementType: 'NDA', expirationDate: 'Aug 18, 2026', effectiveDate: '4/26/2022', isAIAssisted: false },
+  { id: 'ac4', fileName: 'DPA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Data processing addendum', parties: ['Acme Corp'], status: 'active', agreementType: 'DPA', effectiveDate: '4/26/2022', isAIAssisted: false },
 ];
 
 const NAVIGATOR_RENEWALS: NavigatorAgreement[] = [
@@ -4389,6 +5185,7 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [selectedQueryId, setSelectedQueryId] = useState('');
+  const [acmeCardKey, setAcmeCardKey] = useState(0);
   const [showIrisSidebar, setShowIrisSidebar] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showWorksheetModal, setShowWorksheetModal] = useState(false);
@@ -4398,7 +5195,7 @@ export default function App() {
   const handleBuildWorksheet = useCallback((type: string) => {
     setWorksheetType(type);
     setWorksheetLoading(true);
-    if (type === 'vendor-exposure-acme' || type === 'renewal-scan' || type === 'auto-renew-risk') {
+    if (type === 'vendor-exposure-acme' || type === 'renewal-scan' || type === 'auto-renew-risk' || type === 'deep-analysis' || type === 'finance-erp') {
       setTimeout(() => {
         setWorksheetLoading(false);
         setShowWorksheetView(true);
@@ -4409,8 +5206,20 @@ export default function App() {
     }
   }, []);
   const [irisFollowUp, setIrisFollowUp] = useState<string | undefined>();
+  const [irisFlowId, setIrisFlowId] = useState<string | undefined>();
+  const [deepAnalysisKey, setDeepAnalysisKey] = useState(0);
   const handleAcmeChipSelect = useCallback((msg: string) => {
     setIrisFollowUp(msg);
+    const ml = msg.toLowerCase();
+    const flowId = ml.includes('cost center') || ml.includes('actual spend') || ml.includes('discounts') ? 'sq_finance'
+      : ml.includes('product') ? 'sq_deep'
+      : 'sq_current';
+    setIrisFlowId(flowId);
+    setShowIrisSidebar(true);
+  }, []);
+  const handleDeepAnalysisCTA = useCallback(() => {
+    setIrisFollowUp(undefined);
+    setIrisFlowId('sq_deep');
     setShowIrisSidebar(true);
   }, []);
   const [isAnswerLoading, setIsAnswerLoading] = useState(false);
@@ -4626,7 +5435,7 @@ export default function App() {
     const q = submittedSearch.toLowerCase();
     if (q.includes('sla') || q.includes('uptime') || q.includes('service level') || q.includes('service credit') || q.includes('claim window') || q.includes('remedy')) return NAVIGATOR_SLA;
     if (q.includes('pricing cap') || q.includes('price raise') || q.includes('expiring in 6') || (q.includes('expir') && (q.includes('cap') || q.includes('selling') || q.includes('price') || q.includes('raise')))) return NAVIGATOR_PRICE_RAISE;
-    if (q.includes('exposure') || q.includes('total spend') || q.includes('benchmark') || (q.includes('acme') && (q.includes('?') || q.includes('spend')))) return NAVIGATOR_ACME;
+    if (q.includes('acme') || q.includes('exposure') || q.includes('total spend') || q.includes('benchmark')) return NAVIGATOR_ACME;
     if ((q.includes('renewal') || q.includes('renew')) && (q.includes('6') || q.includes('six')) && q.includes('month')) return NAVIGATOR_RENEWALS;
     if ((q.includes('renewal') || q.includes('renew')) && (q.includes('90') || q.includes('coming up'))) return NAVIGATOR_RENEWALS;
     // Simple text lookup — word-by-word match against file name, party, or agreement type
@@ -4848,7 +5657,15 @@ export default function App() {
           search={{
             value: search,
             onChange: (v) => { setSearch(v); if (!v) { setSubmittedSearch(''); setShowIrisSidebar(false); } },
-            onSubmit: isNavigatorView ? () => { setSubmittedSearch(search); setShowSuggestions(false); } : undefined,
+            onSubmit: isNavigatorView ? () => {
+              const sq = search.toLowerCase().trim();
+              if (sq === 'acme') { setSelectedQueryId('sq_deep'); setAcmeCardKey(k => k + 1); }
+              else if ((sq.includes('6 month') || sq.includes('six month')) && (sq.includes('expir') || sq.includes('renew') || sq.includes('vendor'))) setSelectedQueryId('sq3');
+              else if (sq.includes('auto-renew') || sq.includes('alert me') || sq.includes('auto renew')) setSelectedQueryId('sq_autorenew');
+              else setSelectedQueryId('');
+              setSubmittedSearch(search);
+              setShowSuggestions(false);
+            } : undefined,
             placeholder: isNavigatorView
               ? "Ask a question about your agreements..."
               : isPartiesView ? 'Search parties...'
@@ -4894,6 +5711,7 @@ export default function App() {
               setSubmittedSearch(q);
               setSelectedQueryId(id);
               setShowSuggestions(false);
+              if (id === 'sq_deep' || id === 'sq_current' || id === 'sq_finance') setAcmeCardKey(k => k + 1);
             }} />
           </div>
         )}
@@ -4906,14 +5724,14 @@ export default function App() {
         <DataTable columns={requestColumns} data={filteredRequests} getRowKey={(row) => row.id} stickyHeader showColumnControl rowHeight="tall" emptyMessage="No requests found" pagination={{ page: 1, pageSize: 10, totalItems: filteredRequests.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
       ) : isNavigatorView ? (
         <>
-          {submittedSearch && selectedQueryId === 'sq_current' && (
-            <AcmeAnswerCard key={submittedSearch} onChipSelect={handleAcmeChipSelect} />
+          {submittedSearch && (selectedQueryId === 'sq_deep' || selectedQueryId === 'sq_current' || selectedQueryId === 'sq_finance') && (
+            <AcmeAnswerCard key={`acme-${acmeCardKey}`} onChipSelect={handleAcmeChipSelect} flowId={selectedQueryId} />
           )}
-          {submittedSearch && selectedQueryId !== 'sq_current' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
+          {submittedSearch && selectedQueryId !== 'sq_deep' && selectedQueryId !== 'sq_current' && selectedQueryId !== 'sq_finance' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
           {submittedSearch && filteredNavigator.length < 687 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '3px 12px' }}>
-                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {selectedQueryId === 'sq_autorenew' ? 8 : selectedQueryId !== 'sq_current' ? 42 : filteredNavigator.length} of 687</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {selectedQueryId === 'sq_autorenew' ? 8 : selectedQueryId === 'sq3' ? 42 : filteredNavigator.length} of 687</span>
               </div>
               <Text size="xs" color="secondary">agreements matching your search</Text>
               <button onClick={() => { setSearch(''); setSubmittedSearch(''); setSelectedQueryId(''); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>Clear filter</button>
@@ -4977,9 +5795,10 @@ export default function App() {
         <IrisSidebar
           question={submittedSearch}
           followUp={irisFollowUp}
-          onClose={() => { setShowIrisSidebar(false); setIrisFollowUp(undefined); setShowWorksheetView(false); }}
+          onClose={() => { setShowIrisSidebar(false); setIrisFollowUp(undefined); setIrisFlowId(undefined); setShowWorksheetView(false); }}
           onBuildWorksheet={handleBuildWorksheet}
           worksheetMode={showWorksheetView}
+          flowId={irisFlowId}
         />
       )}
     </div>
