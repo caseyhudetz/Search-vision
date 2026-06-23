@@ -2198,7 +2198,6 @@ function WorksheetModal({ onClose, worksheetType = 'renewals' }: { onClose: () =
    ═══════════════════════════════════════ */
 
 function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void }) {
-  const [expanded, setExpanded] = useState(false);
   const [visible, setVisible] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [selectedMsg, setSelectedMsg] = useState<string | null>(null);
@@ -2222,12 +2221,6 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
     setTimeout(() => setCollapsed(true), 80);
     setTimeout(() => onChipSelect(msg), 150);
   };
-
-  const stats = [
-    { value: '3', label: 'Active agreements' },
-    { value: '2', label: 'Expiring soon', urgent: true },
-    { value: '0', label: 'Up for renewal' },
-  ];
 
   return (
     <div style={{
@@ -2270,64 +2263,76 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
         transition: 'max-height 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease',
       }}>
 
-        {/* Card header */}
-        <div style={{
-          padding: '14px 16px 12px',
-          borderBottom: '1px solid var(--ink-border-color-subtle)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-text-primary)', lineHeight: 1.3 }}>Acme Corp</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 2 }}>Party · 4 agreements on record</div>
+        {/* Header: name (linked) + party info + summary */}
+        <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 2 }}>
+            <a
+              href="#"
+              onClick={(e) => e.preventDefault()}
+              style={{
+                fontSize: 16, fontWeight: 600, color: 'var(--ink-text-primary)',
+                textDecoration: 'none', lineHeight: 1.3,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+            >
+              Acme Corp
+            </a>
+            <a
+              href="#"
+              onClick={(e) => e.preventDefault()}
+              style={{
+                fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)',
+                textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
+                flexShrink: 0, marginTop: 2,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+            >
+              View parties page
+              <Icon name="external-link" size={11} color="var(--ink-purple-100, #4B47C8)" />
+            </a>
           </div>
-          <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
-            style={{
-              fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)',
-              textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
-              flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
-          >
-            View parties page
-            <Icon name="external-link" size={11} color="var(--ink-purple-100, #4B47C8)" />
-          </a>
+          <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 10 }}>
+            Party · 4 agreements on record
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>
+            An established software vendor with a 3-year relationship. $225K/yr in committed spend across an MSA, SOW, NDA, and DPA. 2 agreements are coming up for action before Q3.
+          </div>
         </div>
 
         {/* Stats — "In the next 90 days" */}
         <div style={{ borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
-          <div style={{ padding: '10px 16px 6px', fontSize: 12, color: 'var(--ink-text-secondary)' }}>
-            In the next 90 days.
+          <div style={{ padding: '8px 16px 4px', fontSize: 11, color: 'var(--ink-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>
+            In the next 90 days
           </div>
           <div style={{ display: 'flex' }}>
-            {stats.map((stat, i) => (
+            {[
+              { value: '3', label: 'Active agreements' },
+              { value: '2', label: 'Expiring soon', urgent: true },
+              { value: '0', label: 'Up for renewal' },
+            ].map((stat, i) => (
               <div key={stat.label} style={{
-                flex: 1, padding: '6px 16px 16px',
+                flex: 1,
+                padding: '6px 16px 12px',
                 borderLeft: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none',
               }}>
                 <div style={{
-                  fontSize: 30, fontWeight: 400, lineHeight: 1.15,
+                  fontSize: 26, fontWeight: 400, lineHeight: 1.1,
                   color: stat.urgent ? '#D97706' : 'var(--ink-text-primary)',
-                  marginBottom: 4,
+                  marginBottom: 3,
                 }}>{stat.value}</div>
-                <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)' }}>{stat.label}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{stat.label}</div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Explore with AI */}
-        <div style={{
-          padding: '14px 16px 16px',
-          background: 'var(--ink-purple-05, #f5f3ff)',
-          borderBottom: '1px solid var(--ink-border-color-subtle)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-            {/* Icon — stacked docs with gradient tint, mirrors Parties page */}
+        {/* Explore with AI — always visible, no toggle */}
+        <div style={{ padding: '12px 16px 14px', background: 'var(--ink-purple-05, #f5f3ff)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <div style={{
-              width: 38, height: 38, borderRadius: 8, flexShrink: 0,
+              width: 34, height: 34, borderRadius: 8, flexShrink: 0,
               background: 'linear-gradient(135deg, #ede9ff 0%, #ddd5ff 100%)',
               border: '1px solid var(--ink-purple-20, #d9d3ff)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2335,10 +2340,10 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
               <IrisIcon />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', marginBottom: 8 }}>
                 Explore with AI
               </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+              <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' as const }}>
                 {chips.map(chip => (
                   <button
                     key={chip.label}
@@ -2347,7 +2352,7 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
                       display: 'inline-flex', alignItems: 'center',
                       background: '#fff',
                       border: '1px solid var(--ink-border-color-default)',
-                      borderRadius: 100, padding: '6px 14px', fontSize: 13,
+                      borderRadius: 100, padding: '5px 12px', fontSize: 12,
                       color: 'var(--ink-text-primary)',
                       cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
                       transition: 'background 150ms ease, transform 100ms ease',
@@ -2364,67 +2369,6 @@ function AcmeAnswerCard({ onChipSelect }: { onChipSelect: (msg: string) => void 
           </div>
         </div>
 
-        {/* Expandable — Ask anything input */}
-        <div style={{
-          maxHeight: expanded ? '100px' : '0px',
-          opacity: expanded ? 1 : 0,
-          overflow: 'hidden',
-          transition: 'max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease',
-        }}>
-          <div style={{ padding: '14px 16px' }}>
-            <div style={{
-              border: '1px solid var(--ink-border-color-default)',
-              borderRadius: 100, padding: '8px 8px 8px 16px',
-              background: '#fff', display: 'flex', alignItems: 'center', gap: 8,
-              boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-            }}>
-              <input
-                placeholder="Ask anything about Acme..."
-                style={{
-                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                  fontSize: 14, fontFamily: 'inherit', color: 'var(--ink-text-primary)',
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    const val = (e.target as HTMLInputElement).value.trim();
-                    if (val) handleChip(val);
-                  }
-                }}
-              />
-              <button style={{
-                width: 28, height: 28, borderRadius: '50%', border: 'none',
-                background: 'var(--ink-purple-100, #4B47C8)', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <Icon name="arrow-up" size={13} color="#fff" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Show more / Show less */}
-        <div style={{ position: 'relative' }}>
-          <div style={{ height: 1, background: 'var(--ink-border-color-subtle)' }} />
-          <button
-            onClick={() => setExpanded(e => !e)}
-            style={{
-              position: 'absolute', top: '50%', left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: '#fff', border: '1px solid var(--ink-border-color-default)',
-              borderRadius: 100, padding: '5px 14px',
-              fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
-              fontFamily: 'inherit', whiteSpace: 'nowrap',
-              transition: 'background 150ms ease',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-          >
-            {expanded ? 'Show less' : 'Show more'}
-            <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={12} />
-          </button>
-        </div>
-        <div style={{ height: 18 }} />
       </div>
     </div>
   );
