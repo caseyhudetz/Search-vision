@@ -3793,85 +3793,24 @@ function AcmePartyCard({ onContinue, onBuildWorksheet }: { onContinue: (msg: str
    ═══════════════════════════════════════ */
 
 function AutoRenewRiskBlock({ onBuildWorksheet }: { onBuildWorksheet: (type: string) => void }) {
-  const [visible, setVisible] = useState(false);
   const [reportBuilt, setReportBuilt] = useState(false);
   const fade = useFadeIn(120, 300);
 
-  useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 80);
-    return () => clearTimeout(t);
-  }, []);
-
-  const contracts = [
-    { vendor: 'Salesforce Inc.', file: 'Enterprise Agreement - Salesforce Inc.pdf', renewal: 'Jul 14, 2026', value: '$420K/yr', notice: '60 days', deadline: 'May 15', risk: 'missed' as const },
-    { vendor: 'Workday', file: 'Enterprise Agreement - Workday.pdf', renewal: 'Aug 2, 2026', value: '$310K/yr', notice: '90 days', deadline: 'May 4', risk: 'missed' as const },
-    { vendor: 'Zendesk', file: 'SaaS Agreement - Zendesk.pdf', renewal: 'Sep 1, 2026', value: '$96K/yr', notice: '60 days', deadline: 'Jul 3', risk: 'urgent' as const },
-    { vendor: 'Slack Technologies', file: 'Subscription - Slack Technologies.pdf', renewal: 'Aug 18, 2026', value: '$82K/yr', notice: '30 days', deadline: 'Jul 19', risk: 'medium' as const },
-    { vendor: 'Adobe Inc.', file: 'Creative Cloud - Adobe Inc.pdf', renewal: 'Oct 12, 2026', value: '$64K/yr', notice: '30 days', deadline: 'Sep 12', risk: 'low' as const },
-    { vendor: 'Box Inc.', file: 'Enterprise License - Box Inc.pdf', renewal: 'Oct 28, 2026', value: '$48K/yr', notice: '45 days', deadline: 'Sep 13', risk: 'low' as const },
-    { vendor: 'GitHub', file: 'Enterprise Agreement - GitHub.pdf', renewal: 'Nov 22, 2026', value: '$32K/yr', notice: '30 days', deadline: 'Oct 23', risk: 'low' as const },
-    { vendor: 'Notion Labs', file: 'Business Plan - Notion Labs.pdf', renewal: 'Dec 5, 2026', value: '$16K/yr', notice: '14 days', deadline: 'Nov 21', risk: 'low' as const },
-  ];
-
-  const riskConfig = {
-    missed:  { label: 'May have auto-renewed', color: '#c92a2a', bg: '#fff5f5', border: '#ffc9c9', dot: '#c92a2a' },
-    urgent:  { label: '9 days left',           color: '#d9480f', bg: '#fff4e6', border: '#ffd8a8', dot: '#d9480f' },
-    medium:  { label: '25 days left',          color: '#b45309', bg: '#fffbeb', border: '#fde68a', dot: '#b45309' },
-    low:     { label: 'On track',              color: 'var(--ink-text-secondary)', bg: 'var(--ink-neutral-fade-03, #fafafa)', border: 'var(--ink-border-color-subtle)', dot: '#adb5bd' },
-  };
-
-  if (!visible) return null;
-
   return (
-    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-      {/* Header */}
-      <div style={{ padding: '14px 18px 12px', borderBottom: '1px solid var(--ink-border-color-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 7, background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <IrisIcon />
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-text-primary)' }}>Iris found 8 contracts with auto-renewal clauses</span>
-        </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 500, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-05, #f5f5f8)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '3px 10px', flexShrink: 0 }}>
-          <Icon name="document" size={11} color="var(--ink-text-secondary)" />
-          Scanned 687 agreements
-        </div>
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '18px 20px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Iris attribution */}
+      <Inline gap="xs" align="center">
+        <Text size="xs" color="secondary">Scanned 687 agreements</Text>
+        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+      </Inline>
+
+      {/* Natural language answer */}
+      <div style={{ fontSize: 14, lineHeight: 1.75, color: 'var(--ink-text-primary)' }}>
+        You have <strong>8 contracts</strong> with active auto-renewal clauses. Two of them — Salesforce ($420K/yr) and Workday ($310K/yr) — have already passed their cancellation windows and have likely auto-renewed for another year. Zendesk ($96K/yr) has a notice deadline in 9 days. The remaining five are on track, with notice windows opening between July and November.
       </div>
 
-      {/* Finding */}
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-border-color-subtle)', background: '#fff9f9' }}>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Icon name="warning" size={16} color="#c92a2a" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--ink-text-primary)' }}>
-            <strong>2 contracts appear to have already passed their cancellation deadline</strong> — they may have auto-renewed without your team's knowledge, committing <strong>$730K/yr</strong> in spend. One more (Zendesk, $96K) has <strong>9 days remaining</strong> to act.
-          </div>
-        </div>
-      </div>
-
-      {/* Contract list */}
-      <div style={{ padding: '0 0 4px' }}>
-        {contracts.map((c, i) => {
-          const cfg = riskConfig[c.risk];
-          return (
-            <div key={c.vendor} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', background: i < 3 ? cfg.bg : '#fff' }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.dot, flexShrink: 0, marginTop: 1 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 1 }}>{c.vendor}</div>
-                <div style={{ fontSize: 11, color: 'var(--ink-text-secondary)' }}>Renews {c.renewal} · {c.notice} notice required</div>
-              </div>
-              <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{c.value}</div>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: 4, padding: '1px 6px' }}>
-                  {c.risk === 'missed' ? 'Deadline: ' + c.deadline + ' — passed' : c.risk === 'urgent' ? 'Deadline: ' + c.deadline + ' — urgent' : 'Deadline: ' + c.deadline}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer */}
-      <div style={{ padding: '14px 18px', borderTop: '1px solid var(--ink-border-color-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'var(--ink-neutral-fade-03, #fafafa)' }}>
+      {/* CTA + feedback */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 }}>
         <Inline gap="xs">
           <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
           <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
@@ -3887,7 +3826,7 @@ function AutoRenewRiskBlock({ onBuildWorksheet }: { onBuildWorksheet: (type: str
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>
             <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
-            Report built — 8 contracts
+            Report building…
           </div>
         )}
       </div>
