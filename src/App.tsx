@@ -184,7 +184,8 @@ function FadeIn({ children, keyProp: _keyProp }: { children: React.ReactNode; ke
    ═══════════════════════════════════════ */
 
 const SUGGESTED_QUESTIONS = [
-  { id: 'sq_current', icon: 'person' as const, query: 'Acme', label: 'Simple Response' as string | undefined, description: 'Simple request · search by company or person name' },
+  { id: 'sq_current', icon: 'person' as const, query: 'Acme', label: 'Simple: Party Search' as string | undefined, description: 'Single entity lookup · search by company or person name' },
+  { id: 'sq_question', icon: 'refresh' as const, query: 'Which of our contracts are at risk of auto-renewing?', label: 'Question: Auto-renewal risk' as string | undefined, description: 'Cross-supplier question · contracts with active auto-renewal clauses and approaching notice windows' },
   { id: 'sq_deep', icon: 'chart-bar' as const, query: 'Acme', label: 'Products & Pricing' as string | undefined, description: 'Deep analysis · products, pricing, and terms across all agreements' },
   { id: 'sq_finance', icon: 'currency-dollar' as const, query: 'Acme', label: 'Cost & Spend Analysis' as string | undefined, description: 'External operational data · Finance & ERP integration with actuals vs contract value' },
   { id: 'sq_autorenew', icon: 'bell' as const, query: 'Alert me to contracts at risk of auto-renewing', description: 'Future state v2 · Proactive monitoring, risk scoring, and recommended actions' },
@@ -226,6 +227,7 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
   );
 
   const sq_current = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_current')!;
+  const sq_question = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_question')!;
   const sq_deep = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_deep')!;
   const sq_finance = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_finance')!;
   const sq_autorenew = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_autorenew')!;
@@ -242,6 +244,7 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
 
       <SectionHeader label="Search and Filter" />
       <FlowItem q={sq_current} />
+      <FlowItem q={sq_question} />
 
       <SectionHeader label="Deep Analysis" />
       <FlowItem q={sq_deep} />
@@ -3785,6 +3788,113 @@ function AcmePartyCard({ onContinue, onBuildWorksheet }: { onContinue: (msg: str
   );
 }
 
+/* ═══════════════════════════════════════
+   Auto-Renewal Risk Answer Block (question-based, cross-supplier)
+   ═══════════════════════════════════════ */
+
+function AutoRenewRiskBlock({ onBuildWorksheet }: { onBuildWorksheet: (type: string) => void }) {
+  const [visible, setVisible] = useState(false);
+  const [reportBuilt, setReportBuilt] = useState(false);
+  const fade = useFadeIn(120, 300);
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 80);
+    return () => clearTimeout(t);
+  }, []);
+
+  const contracts = [
+    { vendor: 'Salesforce Inc.', file: 'Enterprise Agreement - Salesforce Inc.pdf', renewal: 'Jul 14, 2026', value: '$420K/yr', notice: '60 days', deadline: 'May 15', risk: 'missed' as const },
+    { vendor: 'Workday', file: 'Enterprise Agreement - Workday.pdf', renewal: 'Aug 2, 2026', value: '$310K/yr', notice: '90 days', deadline: 'May 4', risk: 'missed' as const },
+    { vendor: 'Zendesk', file: 'SaaS Agreement - Zendesk.pdf', renewal: 'Sep 1, 2026', value: '$96K/yr', notice: '60 days', deadline: 'Jul 3', risk: 'urgent' as const },
+    { vendor: 'Slack Technologies', file: 'Subscription - Slack Technologies.pdf', renewal: 'Aug 18, 2026', value: '$82K/yr', notice: '30 days', deadline: 'Jul 19', risk: 'medium' as const },
+    { vendor: 'Adobe Inc.', file: 'Creative Cloud - Adobe Inc.pdf', renewal: 'Oct 12, 2026', value: '$64K/yr', notice: '30 days', deadline: 'Sep 12', risk: 'low' as const },
+    { vendor: 'Box Inc.', file: 'Enterprise License - Box Inc.pdf', renewal: 'Oct 28, 2026', value: '$48K/yr', notice: '45 days', deadline: 'Sep 13', risk: 'low' as const },
+    { vendor: 'GitHub', file: 'Enterprise Agreement - GitHub.pdf', renewal: 'Nov 22, 2026', value: '$32K/yr', notice: '30 days', deadline: 'Oct 23', risk: 'low' as const },
+    { vendor: 'Notion Labs', file: 'Business Plan - Notion Labs.pdf', renewal: 'Dec 5, 2026', value: '$16K/yr', notice: '14 days', deadline: 'Nov 21', risk: 'low' as const },
+  ];
+
+  const riskConfig = {
+    missed:  { label: 'May have auto-renewed', color: '#c92a2a', bg: '#fff5f5', border: '#ffc9c9', dot: '#c92a2a' },
+    urgent:  { label: '9 days left',           color: '#d9480f', bg: '#fff4e6', border: '#ffd8a8', dot: '#d9480f' },
+    medium:  { label: '25 days left',          color: '#b45309', bg: '#fffbeb', border: '#fde68a', dot: '#b45309' },
+    low:     { label: 'On track',              color: 'var(--ink-text-secondary)', bg: 'var(--ink-neutral-fade-03, #fafafa)', border: 'var(--ink-border-color-subtle)', dot: '#adb5bd' },
+  };
+
+  if (!visible) return null;
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+      {/* Header */}
+      <div style={{ padding: '14px 18px 12px', borderBottom: '1px solid var(--ink-border-color-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 7, background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <IrisIcon />
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-text-primary)' }}>Iris found 8 contracts with auto-renewal clauses</span>
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 500, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-05, #f5f5f8)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '3px 10px', flexShrink: 0 }}>
+          <Icon name="document" size={11} color="var(--ink-text-secondary)" />
+          Scanned 687 agreements
+        </div>
+      </div>
+
+      {/* Finding */}
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--ink-border-color-subtle)', background: '#fff9f9' }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Icon name="warning" size={16} color="#c92a2a" style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--ink-text-primary)' }}>
+            <strong>2 contracts appear to have already passed their cancellation deadline</strong> — they may have auto-renewed without your team's knowledge, committing <strong>$730K/yr</strong> in spend. One more (Zendesk, $96K) has <strong>9 days remaining</strong> to act.
+          </div>
+        </div>
+      </div>
+
+      {/* Contract list */}
+      <div style={{ padding: '0 0 4px' }}>
+        {contracts.map((c, i) => {
+          const cfg = riskConfig[c.risk];
+          return (
+            <div key={c.vendor} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', background: i < 3 ? cfg.bg : '#fff' }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: cfg.dot, flexShrink: 0, marginTop: 1 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 1 }}>{c.vendor}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-text-secondary)' }}>Renews {c.renewal} · {c.notice} notice required</div>
+              </div>
+              <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{c.value}</div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 500, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: 4, padding: '1px 6px' }}>
+                  {c.risk === 'missed' ? 'Deadline: ' + c.deadline + ' — passed' : c.risk === 'urgent' ? 'Deadline: ' + c.deadline + ' — urgent' : 'Deadline: ' + c.deadline}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: '14px 18px', borderTop: '1px solid var(--ink-border-color-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'var(--ink-neutral-fade-03, #fafafa)' }}>
+        <Inline gap="xs">
+          <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+          <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+        </Inline>
+        {!reportBuilt ? (
+          <button
+            onClick={() => { setReportBuilt(true); onBuildWorksheet('auto-renew-risk'); }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            <Icon name="table" size={14} />
+            Open Report
+          </button>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>
+            <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+            Report built — 8 contracts
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AIAnswerBlock({ onContinue, question, onBuildWorksheet }: { onContinue: (msg: string) => void; question: string; onBuildWorksheet: (type: string) => void }) {
   const [collapsed, setCollapsed] = useState(false);
   const [collapsedViaIris, setCollapsedViaIris] = useState(false);
@@ -4009,6 +4119,17 @@ const NAVIGATOR_ACME: NavigatorAgreement[] = [
   { id: 'ac2', fileName: 'SOW - Acme Implementation.pdf', fileStatus: 'completed', fileStatusDetail: 'Fixed scope project', parties: ['Acme Corp'], status: 'active', agreementType: 'SOW', contractValue: '$45,000', expirationDate: 'Aug 18, 2026', effectiveDate: '1/15/2024', isAIAssisted: true },
   { id: 'ac3', fileName: 'NDA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Mutual non-disclosure', parties: ['Acme Corp'], status: 'active', agreementType: 'NDA', expirationDate: 'Aug 18, 2026', effectiveDate: '4/26/2022', isAIAssisted: false },
   { id: 'ac4', fileName: 'DPA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Data processing addendum', parties: ['Acme Corp'], status: 'active', agreementType: 'DPA', effectiveDate: '4/26/2022', isAIAssisted: false },
+];
+
+const NAVIGATOR_AUTORENEW: NavigatorAgreement[] = [
+  { id: 'ar1', fileName: 'Enterprise Agreement - Salesforce Inc.pdf', fileStatus: 'completed', fileStatusDetail: 'Auto-renewal clause active', parties: ['Salesforce Inc.'], status: 'active', agreementType: 'SaaS', contractValue: '$420,000/yr', expirationDate: 'Jul 14, 2026', effectiveDate: '7/14/2023', isAIAssisted: true },
+  { id: 'ar2', fileName: 'Enterprise Agreement - Workday.pdf', fileStatus: 'completed', fileStatusDetail: 'Auto-renewal clause active', parties: ['Workday'], status: 'active', agreementType: 'SaaS', contractValue: '$310,000/yr', expirationDate: 'Aug 2, 2026', effectiveDate: '8/2/2023', isAIAssisted: true },
+  { id: 'ar3', fileName: 'Subscription - Slack Technologies.pdf', fileStatus: 'completed', fileStatusDetail: 'Auto-renewal clause active', parties: ['Slack Technologies'], status: 'active', agreementType: 'SaaS', contractValue: '$82,000/yr', expirationDate: 'Aug 18, 2026', effectiveDate: '8/18/2024', isAIAssisted: true },
+  { id: 'ar4', fileName: 'SaaS Agreement - Zendesk.pdf', fileStatus: 'completed', fileStatusDetail: 'Auto-renewal clause active', parties: ['Zendesk'], status: 'active', agreementType: 'SaaS', contractValue: '$96,000/yr', expirationDate: 'Sep 1, 2026', effectiveDate: '9/1/2024', isAIAssisted: true },
+  { id: 'ar5', fileName: 'Creative Cloud - Adobe Inc.pdf', fileStatus: 'completed', fileStatusDetail: 'Auto-renewal clause active', parties: ['Adobe Inc.'], status: 'active', agreementType: 'SaaS', contractValue: '$64,000/yr', expirationDate: 'Oct 12, 2026', effectiveDate: '10/12/2024', isAIAssisted: false },
+  { id: 'ar6', fileName: 'Enterprise License - Box Inc.pdf', fileStatus: 'completed', fileStatusDetail: 'Auto-renewal clause active', parties: ['Box Inc.'], status: 'active', agreementType: 'SaaS', contractValue: '$48,000/yr', expirationDate: 'Oct 28, 2026', effectiveDate: '10/28/2024', isAIAssisted: false },
+  { id: 'ar7', fileName: 'Enterprise Agreement - GitHub.pdf', fileStatus: 'completed', fileStatusDetail: 'Auto-renewal clause active', parties: ['GitHub'], status: 'active', agreementType: 'SaaS', contractValue: '$32,000/yr', expirationDate: 'Nov 22, 2026', effectiveDate: '11/22/2024', isAIAssisted: false },
+  { id: 'ar8', fileName: 'Business Plan - Notion Labs.pdf', fileStatus: 'completed', fileStatusDetail: 'Auto-renewal clause active', parties: ['Notion Labs'], status: 'active', agreementType: 'SaaS', contractValue: '$16,000/yr', expirationDate: 'Dec 5, 2026', effectiveDate: '12/5/2024', isAIAssisted: false },
 ];
 
 const NAVIGATOR_RENEWALS: NavigatorAgreement[] = [
@@ -5436,6 +5557,7 @@ export default function App() {
     if (q.includes('sla') || q.includes('uptime') || q.includes('service level') || q.includes('service credit') || q.includes('claim window') || q.includes('remedy')) return NAVIGATOR_SLA;
     if (q.includes('pricing cap') || q.includes('price raise') || q.includes('expiring in 6') || (q.includes('expir') && (q.includes('cap') || q.includes('selling') || q.includes('price') || q.includes('raise')))) return NAVIGATOR_PRICE_RAISE;
     if (q.includes('acme') || q.includes('exposure') || q.includes('total spend') || q.includes('benchmark')) return NAVIGATOR_ACME;
+    if (q.includes('auto-renew') || q.includes('auto renew') || q.includes('risk of auto')) return NAVIGATOR_AUTORENEW;
     if ((q.includes('renewal') || q.includes('renew')) && (q.includes('6') || q.includes('six')) && q.includes('month')) return NAVIGATOR_RENEWALS;
     if ((q.includes('renewal') || q.includes('renew')) && (q.includes('90') || q.includes('coming up'))) return NAVIGATOR_RENEWALS;
     // Simple text lookup — word-by-word match against file name, party, or agreement type
@@ -5727,11 +5849,14 @@ export default function App() {
           {submittedSearch && (selectedQueryId === 'sq_deep' || selectedQueryId === 'sq_current' || selectedQueryId === 'sq_finance') && (
             <AcmeAnswerCard key={`acme-${acmeCardKey}`} onChipSelect={handleAcmeChipSelect} flowId={selectedQueryId} />
           )}
-          {submittedSearch && selectedQueryId !== 'sq_deep' && selectedQueryId !== 'sq_current' && selectedQueryId !== 'sq_finance' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
+          {submittedSearch && selectedQueryId === 'sq_question' && (
+            <AutoRenewRiskBlock onBuildWorksheet={handleBuildWorksheet} />
+          )}
+          {submittedSearch && selectedQueryId !== 'sq_deep' && selectedQueryId !== 'sq_current' && selectedQueryId !== 'sq_finance' && selectedQueryId !== 'sq_question' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
           {submittedSearch && filteredNavigator.length < 687 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '3px 12px' }}>
-                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {selectedQueryId === 'sq_autorenew' ? 8 : selectedQueryId === 'sq3' ? 42 : filteredNavigator.length} of 687</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {selectedQueryId === 'sq_autorenew' || selectedQueryId === 'sq_question' ? 8 : selectedQueryId === 'sq3' ? 42 : filteredNavigator.length} of 687</span>
               </div>
               <Text size="xs" color="secondary">agreements matching your search</Text>
               <button onClick={() => { setSearch(''); setSubmittedSearch(''); setSelectedQueryId(''); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>Clear filter</button>
