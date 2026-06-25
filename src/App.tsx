@@ -184,12 +184,13 @@ function FadeIn({ children, keyProp: _keyProp }: { children: React.ReactNode; ke
    ═══════════════════════════════════════ */
 
 const SUGGESTED_QUESTIONS = [
-  { id: 'sq_current', icon: 'person' as const, query: 'Acme', label: 'Simple: Party Search' as string | undefined, description: 'Single entity lookup · search by company or person name' },
+  { id: 'sq_updates', icon: 'bell' as const, query: 'Acme', label: 'Simple Input' as string | undefined, description: 'Single entity lookup · name input, intent routing, guided chat' },
   { id: 'sq_question', icon: 'refresh' as const, query: 'Which of our contracts are at risk of auto-renewing?', label: 'Question: Auto-renewal risk' as string | undefined, description: 'Cross-supplier question · contracts with active auto-renewal clauses and approaching notice windows' },
-  { id: 'sq_deep', icon: 'chart-bar' as const, query: 'Acme', label: 'Products & Pricing' as string | undefined, description: 'Deep analysis · products, pricing, and terms across all agreements' },
+  { id: 'sq_deep', icon: 'chart-bar' as const, query: 'What products and services do we purchase from this vendor?', label: 'Products & Pricing' as string | undefined, description: 'Deep analysis · products, pricing, and terms across all agreements' },
   { id: 'sq_finance', icon: 'currency-dollar' as const, query: 'Acme', label: 'Cost & Spend Analysis' as string | undefined, description: 'External operational data · Finance & ERP integration with actuals vs contract value' },
   { id: 'sq_autorenew', icon: 'bell' as const, query: 'Alert me to contracts at risk of auto-renewing', description: 'Future state v2 · Proactive monitoring, risk scoring, and recommended actions' },
   { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'v1 · AI-guided analysis, risk identification, and structured worksheet' },
+  { id: 'sq_termination', icon: 'document' as const, query: 'Check contract terms for Acme', label: 'Acme: Contract Terms Audit' as string | undefined, description: 'Intent routing · triage termination clauses, survival clauses, or full audit table' },
 ];
 
 function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) => void }) {
@@ -226,12 +227,13 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
     </button>
   );
 
-  const sq_current = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_current')!;
+  const sq_updates = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_updates')!;
   const sq_question = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_question')!;
   const sq_deep = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_deep')!;
   const sq_finance = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_finance')!;
   const sq_autorenew = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_autorenew')!;
   const sq3 = SUGGESTED_QUESTIONS.find(q => q.id === 'sq3')!;
+  const sq_termination = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_termination')!;
 
   return (
     <div style={{
@@ -243,11 +245,12 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
       </div>
 
       <SectionHeader label="Search and Filter" />
-      <FlowItem q={sq_current} />
+      <FlowItem q={sq_updates} />
       <FlowItem q={sq_question} />
 
       <SectionHeader label="Deep Analysis" />
       <FlowItem q={sq_deep} />
+      <FlowItem q={sq_termination} />
 
       <SectionHeader label="External Operational Data" />
       <FlowItem q={sq_finance} />
@@ -301,9 +304,11 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   const _isRenewalInit = followUp && ((_qi.includes('6 month') || _qi.includes('six month')) && (_qi.includes('expir') || _qi.includes('renew') || _qi.includes('vendor')));
   const _isDeepInit = flowId === 'sq_deep' && !!followUp;
   const _isFinanceInit = flowId === 'sq_finance' && !!followUp;
+  const _isTerminationInit = flowId === 'sq_termination' && !!followUp;
+  const _isUpdatesInit = flowId === 'sq_updates' && !!followUp;
   const [convStep, setConvStep] = useState(_isRenewalInit ? 1 : 0);
   const [userMessages, setUserMessages] = useState<string[]>(
-    _isDeepInit ? [followUp as string] : _isFinanceInit ? [followUp as string] : _isRenewalInit ? [followUp as string] : []
+    _isDeepInit ? [followUp as string] : _isFinanceInit ? [followUp as string] : _isTerminationInit ? [followUp as string] : _isUpdatesInit ? [followUp as string] : _isRenewalInit ? [followUp as string] : []
   );
   const [financeModalOpen, setFinanceModalOpen] = useState(false);
   const [financeGranted, setFinanceGranted] = useState(false);
@@ -371,7 +376,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   }, [isThinking, initialReady]);
 
   useEffect(() => {
-    if ((!_isDeepInit && !_isFinanceInit) || !followUpReady || convStep !== 0) return;
+    if ((!_isDeepInit && !_isFinanceInit && !_isTerminationInit && !_isUpdatesInit) || !followUpReady || convStep !== 0) return;
     setConvStep(1);
   }, [followUpReady]);
 
@@ -386,8 +391,10 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
 
   const isSLAFlow = q.includes('software') && q.includes('sla');
   const isPartyFlow = flowId === 'sq_current';
+  const isUpdatesFlow = flowId === 'sq_updates';
   const isDeepAnalysisFlow = flowId === 'sq_deep';
   const isFinanceFlow = flowId === 'sq_finance';
+  const isTerminationFlow = flowId === 'sq_termination';
   const isRenewalScanFlow = (q.includes('6 month') || q.includes('six month')) && (q.includes('expir') || q.includes('renew') || q.includes('vendor'));
   const isAutoRenewFlow = q.includes('auto-renew') || q.includes('alert me') || q.includes('auto renew');
 
@@ -397,10 +404,11 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
     setIsThinking(true);
     setTimeout(() => {
       setIsThinking(false);
-      if ((isPriceRaiseFlow || isVendorExposureFlow || isSLAFlow || isPartyFlow) && convStep === 0) setConvStep(1);
+      if ((isPriceRaiseFlow || isVendorExposureFlow || isSLAFlow || isPartyFlow || isUpdatesFlow) && convStep === 0) setConvStep(1);
       if (isRenewalScanFlow && convStep < 3) setConvStep(convStep + 1);
       if (isAutoRenewFlow && convStep < 3) setConvStep(convStep + 1);
       if (isDeepAnalysisFlow && convStep < 3) setConvStep(convStep + 1);
+      if (isTerminationFlow && convStep < 2) setConvStep(convStep + 1);
     }, 1300);
   };
 
@@ -553,6 +561,24 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </button>
         </div>
       )}
+      {isTerminationFlow && chipsReady && !isThinking && convStep === 1 && userMessages.length === 1 && (
+        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+          {[
+            { label: 'Which documents are flagged as uncertain?', msg: 'Which documents are flagged as uncertain?' },
+            { label: 'What are the exact notice periods?', msg: 'What are the exact notice periods?' },
+          ].map(chip => (
+            <button
+              key={chip.msg}
+              onMouseDown={(e) => { e.preventDefault(); setInputValue(chip.msg); }}
+              style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
       {/* Input card — matches screenshot */}
       <div style={{
         border: '1px solid var(--ink-border-color-default)',
@@ -579,6 +605,9 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               else if (convStep === 1 && userMessages.length === 1) setInputValue('Break down by pricing model and give examples');
               else if (convStep === 2 && userMessages.length === 2) setInputValue('Yes, set it up');
             }
+            if (!inputValue && isTerminationFlow) {
+              if (convStep === 1 && userMessages.length === 1) setInputValue('Which documents are flagged as uncertain?');
+            }
           }}
           placeholder="Type something..."
           style={{ width: '100%', border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit', marginBottom: 10, display: 'block' }}
@@ -589,7 +618,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '3px 8px 3px 6px' }}>
             <Icon name="document" size={12} color="var(--ink-text-secondary)" />
-            <span>{isRenewalScanFlow ? '42 agreements' : isAutoRenewFlow ? '8 agreements' : isDeepAnalysisFlow ? '23 agreements' : isFinanceFlow ? '10 agreements' : isPartyFlow ? '4 agreements' : '10 sources'}</span>
+            <span>{isTerminationFlow ? '5 agreements' : isRenewalScanFlow ? '42 agreements' : isAutoRenewFlow ? '8 agreements' : isDeepAnalysisFlow ? '23 agreements' : isFinanceFlow ? '10 agreements' : isPartyFlow ? '4 agreements' : '10 sources'}</span>
           </div>
           <div style={{ flex: 1 }} />
           <button onClick={handleSend} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: inputValue.trim() ? 'pointer' : 'default', background: 'var(--ink-purple-100, #4B47C8)', opacity: inputValue.trim() ? 1 : 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'opacity 150ms', color: '#fff' }}>
@@ -1410,48 +1439,14 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </div>
           {irisInputArea}
         </>
-      ) : isPartyFlow ? (
-        /* ── Party relationship flow ── */
+      ) : isUpdatesFlow ? (
+        /* ── Simple Input / Updates flow — skip summary, start with the question ── */
         <>
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ paddingBottom: 16, marginBottom: 4, borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
-              <div style={{ fontSize: 19, fontWeight: 700, color: 'var(--ink-purple-100, #4B47C8)', marginBottom: 3 }}>Hello, there</div>
-              <div style={{ fontSize: 15, color: 'var(--ink-text-primary)' }}>What would you like to know?</div>
-            </div>
-            <IrisUserBubble text={question} />
             <Inline gap="xs" align="center">
               <Text size="xs" color="secondary">Read 4 Acme Corp agreements</Text>
               <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
             </Inline>
-            {/* Initial: party summary */}
-            <Stack gap="small">
-              <Text size="sm" style={{ lineHeight: 1.65 }}>
-                Acme Corp has <strong>4 agreements on record</strong> — 3 currently active. Total committed spend is <strong>$225K/yr</strong> across an MSA, SOW, and DPA. <strong>2 agreements expire within 90 days</strong>: the SOW (Aug 18, 2026) and the NDA (Aug 22, 2026). The MSA is the primary agreement and renews April 2027.
-              </Text>
-              <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {[
-                  { name: 'MSA - Acme Corp.pdf', detail: 'Active · Renews Apr 2027', value: '$180K/yr' },
-                  { name: 'SOW - Acme Implementation.pdf', detail: 'Expiring Aug 2026', value: '$45K', urgent: true },
-                  { name: 'NDA - Acme Corp.pdf', detail: 'Expiring Aug 2026', value: '—', urgent: true },
-                  { name: 'DPA - Acme Corp.pdf', detail: 'Active · No expiry', value: '—' },
-                ].map(r => (
-                  <div key={r.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Inline gap="xs" align="center">
-                      <Icon name="document" size={13} color={r.urgent ? 'var(--ink-orange-80, #e67700)' : 'var(--ink-text-secondary)'} />
-                      <div>
-                        <Text size="xs" style={{ fontWeight: 500 }}>{r.name}</Text>
-                        <Text size="xs" color="secondary" style={{ display: 'block' }}>{r.detail}</Text>
-                      </div>
-                    </Inline>
-                    <Text size="xs" style={{ fontWeight: 600 }}>{r.value}</Text>
-                  </div>
-                ))}
-              </div>
-              <Inline gap="xs">
-                <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-              </Inline>
-            </Stack>
 
             {followUp && <IrisUserBubble text={followUp} />}
             {followUp && !followUpReady && <IrisThinkingBubble />}
@@ -1822,6 +1817,110 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </div>
           {irisInputArea}
         </>
+      ) : isTerminationFlow ? (
+        /* ── Acme contract terms triage flow ── */
+        <>
+          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {userMessages.length > 0 && <IrisUserBubble text={userMessages[0]} />}
+            {!followUpReady && <IrisThinkingBubble />}
+
+            {/* Step 1: initial summary after triage selection arrives */}
+            {followUpReady && convStep >= 1 && (
+              <Stack gap="small">
+                <Inline gap="xs" align="center">
+                  <Text size="xs" color="secondary">Read 5 Acme agreements</Text>
+                  <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                </Inline>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Scanning your <strong>5 Acme agreements</strong> for{' '}
+                  <strong>{userMessages[0] || 'contract terms'}</strong>. Here's a quick read:
+                </Text>
+                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { icon: 'status-check' as const, color: 'var(--ink-green-80, #2f9e44)', text: '3 of 5 agreements explicitly address this clause' },
+                    { icon: 'calendar' as const, color: 'var(--ink-text-primary)', text: 'Notice periods range from 60 to 90 days written notice' },
+                    { icon: 'status-warning' as const, color: 'var(--ink-orange-80, #d9480f)', text: '1 document flagged as low confidence — scan quality issue' },
+                  ].map((item, i) => (
+                    <Inline key={i} gap="xs" align="center">
+                      <Icon name={item.icon} size={13} color={item.color} style={{ flexShrink: 0 }} />
+                      <Text size="xs" style={{ color: item.color }}>{item.text}</Text>
+                    </Inline>
+                  ))}
+                </div>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+
+            {isThinking && followUpReady && convStep === 1 && <IrisThinkingBubble />}
+            {userMessages.length > 1 && followUpReady && <IrisUserBubble text={userMessages[1]} />}
+
+            {/* Step 2: detailed answer + worksheet CTA */}
+            {followUpReady && convStep >= 2 && !isThinking && (
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  The <strong>MSA</strong> requires <strong>90 days</strong> written notice; the <strong>DPA</strong> requires <strong>60 days</strong>. The SOW and Amendment inherit from the MSA — they don't carry independent clauses. Exhibit B is a degraded scan and was flagged <span style={{ color: 'var(--ink-orange-80, #d9480f)', fontWeight: 600 }}>Uncertain</span>.
+                </Text>
+                {!worksheetMode ? (
+                  <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                    <Inline gap="xs" align="center">
+                      <IrisIcon />
+                      <Text size="sm" style={{ fontWeight: 600 }}>Generate a Termination Analysis Table?</Text>
+                    </Inline>
+                    <Text size="sm" style={{ lineHeight: 1.6, color: 'var(--ink-text-secondary)' }}>
+                      I'll run a structured extraction across all 5 agreements and build an interactive table with clause presence, notice period, and verified source snippets.
+                    </Text>
+                    <Inline gap="small">
+                      <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('termination-audit'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Yes, generate table
+                        <Icon name="arrow-right" size={13} color="#fff" />
+                      </button>
+                      <button style={{ background: 'none', border: 'none', fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', padding: '8px 4px' }}>
+                        Not right now
+                      </button>
+                    </Inline>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
+                      <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                      <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Termination analysis table generated — 5 agreements</Text>
+                    </div>
+                    <Stack gap="small">
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>Your table is ready. Try these to dig deeper:</Text>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {[
+                          'Which docs have the shortest notice window?',
+                          'Flag any documents missing a termination clause',
+                          "What's the earliest exit date on the MSA?",
+                          'Are any clauses marked uncertain?',
+                        ].map(q => (
+                          <button
+                            key={q}
+                            onMouseDown={(e) => { e.preventDefault(); setInputValue(q); }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 20, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-10, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
+                          >
+                            <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    </Stack>
+                  </>
+                )}
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                </Inline>
+              </Stack>
+            )}
+          </div>
+          {irisInputArea}
+        </>
       ) : (
         /* ── Default / generic conversation ── */
         <>
@@ -2057,6 +2156,10 @@ const WORKSHEET_LOADING_LABELS: Record<string, { title: string; steps: string[] 
     title: 'Building your Acme cost & spend analysis…',
     steps: ['Reading 10 Acme agreements', 'Pulling project and cost center from SAP Finance', 'Reconciling actuals vs contract value'],
   },
+  'termination-audit': {
+    title: 'Analyzing Acme termination clauses…',
+    steps: ['Reading 5 Acme agreements', 'Extracting Termination for Convenience clauses', 'Building comparison table with source snippets'],
+  },
 };
 
 function WorksheetLoadingOverlay({ worksheetType }: { worksheetType: string }) {
@@ -2093,6 +2196,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
   const isAutoRenewView = worksheetType === 'auto-renew-risk';
   const isDeepAnalysisView = worksheetType === 'deep-analysis';
   const isFinanceView = worksheetType === 'finance-erp';
+  const isTerminationView = worksheetType === 'termination-audit';
 
   useEffect(() => {
     const t = setTimeout(() => setDataReady(true), 2400);
@@ -2514,6 +2618,91 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
     },
   ];
 
+  /* ── Acme termination audit data ── */
+  const terminationRows = [
+    { id: 'ta1', fileName: 'MSA - Acme Corp.pdf', clauseFound: 'FOUND', noticePeriod: '90 Days', sourceSnippet: '"Either party may terminate this Agreement without cause upon ninety (90) days prior written notice to the other party…"', status: 'Success' },
+    { id: 'ta2', fileName: 'SOW - Acme Implementation 2023.pdf', clauseFound: 'NOT FOUND', noticePeriod: 'N/A — Follows MSA', sourceSnippet: 'No convenience termination clause located in this SOW. Termination governed by the MSA.', status: 'Success' },
+    { id: 'ta3', fileName: 'Exhibit B - SLA Acme Corp.pdf', clauseFound: 'UNCERTAIN', noticePeriod: 'Unknown', sourceSnippet: 'N/A — Document scan quality insufficient for reliable clause extraction.', status: 'Low Confidence' },
+    { id: 'ta4', fileName: 'DPA - Acme Corp.pdf', clauseFound: 'FOUND', noticePeriod: '60 Days', sourceSnippet: '"Either party may terminate this Data Processing Agreement for convenience upon sixty (60) days written notice…"', status: 'Success' },
+    { id: 'ta5', fileName: 'Amendment 1 - Acme Corp MSA.pdf', clauseFound: 'NOT FOUND', noticePeriod: 'N/A', sourceSnippet: 'Amendment does not modify termination provisions. Original MSA §14.2 controls.', status: 'Success' },
+  ];
+
+  const terminationColumns = [
+    {
+      key: 'fileName',
+      header: 'Document Name',
+      cell: (row: typeof terminationRows[0]) => (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--ink-neutral-fade-05, #f5f5f8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name="document" size={14} color="var(--ink-text-secondary)" />
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)' }}>{row.fileName}</span>
+        </span>
+      ),
+      width: '240px',
+    },
+    {
+      key: 'clauseFound',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Termination for Convenience?</span>
+        </span>
+      ),
+      cell: (row: typeof terminationRows[0]) => {
+        if (!dataReady) return <ShimmerCell width="60%" />;
+        const color = row.clauseFound === 'FOUND' ? 'var(--ink-green-80, #2f9e44)' : row.clauseFound === 'NOT FOUND' ? 'var(--ink-text-secondary)' : 'var(--ink-orange-80, #d9480f)';
+        const bg = row.clauseFound === 'FOUND' ? 'var(--ink-green-10, #f3faf4)' : row.clauseFound === 'NOT FOUND' ? 'var(--ink-neutral-fade-05, #f5f5f8)' : 'var(--ink-orange-10, #fff4e6)';
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color, background: bg, borderRadius: 4, padding: '2px 8px' }}>
+            {row.clauseFound}
+          </span>
+        );
+      },
+      width: '220px',
+    },
+    {
+      key: 'noticePeriod',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Notice Period Required</span>
+        </span>
+      ),
+      cell: (row: typeof terminationRows[0]) => aiCell(row.noticePeriod, '70%'),
+      width: '180px',
+    },
+    {
+      key: 'sourceSnippet',
+      header: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <AIIcon name="ai-spark" size={13} />
+          <span>Verified Source Snippet</span>
+        </span>
+      ),
+      cell: (row: typeof terminationRows[0]) => {
+        if (!dataReady) return <ShimmerCell width="90%" />;
+        return <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontStyle: row.clauseFound === 'FOUND' ? 'italic' : 'normal', lineHeight: 1.5 }}>{row.sourceSnippet}</span>;
+      },
+      width: '340px',
+    },
+    {
+      key: 'status',
+      header: 'System Status',
+      cell: (row: typeof terminationRows[0]) => {
+        if (!dataReady) return <ShimmerCell width="55%" />;
+        const isLow = row.status === 'Low Confidence';
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: isLow ? 'var(--ink-orange-80, #d9480f)' : 'var(--ink-green-80, #2f9e44)' }}>
+            <Icon name={isLow ? 'status-warning' : 'status-check'} size={13} color={isLow ? 'var(--ink-orange-80, #d9480f)' : 'var(--ink-green-80, #2f9e44)'} />
+            {row.status}
+          </span>
+        );
+      },
+      width: '150px',
+    },
+  ];
+
   /* ── Finance / ERP data ── */
   const financeRows = [
     { id: 'fn1', fileName: 'MSA - Acme Corp.pdf', type: 'MSA', effectiveDate: 'Apr 26, 2022', endDate: 'Apr 26, 2027', contractValue: '$180,000/yr', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '$162,000', variance: '-$18,000', notes: '10% volume discount applied' },
@@ -2598,9 +2787,9 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
     },
   ];
 
-  const viewTitle = isFinanceView ? 'Acme Corp — Cost & Spend Analysis' : isDeepAnalysisView ? 'Acme Corp — Products & Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk Tracker' : isRenewalView ? 'Vendor Renewals — Next 6 Months' : 'Acme Corp — Committed Spend & Usage';
-  const viewCrumb = isFinanceView ? 'Cost & Spend Analysis' : isDeepAnalysisView ? 'Acme Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk' : isRenewalView ? 'Renewal Analysis' : 'Vendor Exposure Analysis — Acme Corp';
-  const viewMeta = isFinanceView ? '10 agreements · Acme Corp · SAP Finance · Created just now' : isDeepAnalysisView ? '23 agreements · Acme Corp · Created just now' : isAutoRenewView ? '8 agreements · Risk-prioritized · Created just now' : isRenewalView ? '42 agreements · Vendor renewals · Created just now' : '3 agreements · Acme Corp · Created just now';
+  const viewTitle = isTerminationView ? 'Acme Corp — Termination for Convenience Audit' : isFinanceView ? 'Acme Corp — Cost & Spend Analysis' : isDeepAnalysisView ? 'Acme Corp — Products & Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk Tracker' : isRenewalView ? 'Vendor Renewals — Next 6 Months' : 'Acme Corp — Committed Spend & Usage';
+  const viewCrumb = isTerminationView ? 'Termination Analysis' : isFinanceView ? 'Cost & Spend Analysis' : isDeepAnalysisView ? 'Acme Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk' : isRenewalView ? 'Renewal Analysis' : 'Vendor Exposure Analysis — Acme Corp';
+  const viewMeta = isTerminationView ? '5 agreements · Acme Corp · Termination for Convenience · Created just now' : isFinanceView ? '10 agreements · Acme Corp · SAP Finance · Created just now' : isDeepAnalysisView ? '23 agreements · Acme Corp · Created just now' : isAutoRenewView ? '8 agreements · Risk-prioritized · Created just now' : isRenewalView ? '42 agreements · Vendor renewals · Created just now' : '3 agreements · Acme Corp · Created just now';
 
   return (
     <div {...fade} style={{ ...fade.style, display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
@@ -2617,7 +2806,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ink-purple-10, #f5f3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name={isFinanceView ? 'currency-dollar' : isDeepAnalysisView ? 'chart-bar' : isAutoRenewView ? 'bell' : isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
+            <Icon name={isTerminationView ? 'document' : isFinanceView ? 'currency-dollar' : isDeepAnalysisView ? 'chart-bar' : isAutoRenewView ? 'bell' : isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
           </div>
           <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, color: 'var(--ink-text-primary)', lineHeight: 1.2 }}>{viewTitle}</h1>
         </div>
@@ -2654,7 +2843,18 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
 
       {/* Table — matches AgreementTableView .tableWrapper margin */}
       <div style={{ flex: 1, margin: '0 80px', minHeight: 0 }}>
-        {isFinanceView ? (
+        {isTerminationView ? (
+          <DataTable
+            columns={terminationColumns}
+            data={terminationRows}
+            getRowKey={(row) => row.id}
+            stickyHeader
+            rowHeight="tall"
+            selectable
+            showColumnControl
+            pagination={{ page: 1, pageSize: 50, totalItems: terminationRows.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }}
+          />
+        ) : isFinanceView ? (
           <DataTable
             columns={financeColumns}
             data={financeRows}
@@ -2856,6 +3056,107 @@ function WorksheetModal({ onClose, worksheetType = 'renewals' }: { onClose: () =
 /* ═══════════════════════════════════════
    Answer Loading Skeleton
    ═══════════════════════════════════════ */
+
+/* ═══════════════════════════════════════
+   Acme Termination Block
+   ═══════════════════════════════════════ */
+
+function AcmeTerminationBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const fade = useFadeIn(120, 300);
+
+  const chips = [
+    'Termination for Convenience & Notice Periods',
+    'Survival Clauses',
+    'Generate a Full Comparison Table',
+  ];
+
+  const handleSubmit = (msg: string) => {
+    if (!msg.trim()) return;
+    setCollapsedViaIris(true);
+    setTextInput('');
+    setTimeout(() => setCollapsed(true), 80);
+    setTimeout(() => onFollowUp(msg.trim()), 150);
+  };
+
+  if (collapsed) return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Inline gap="small" align="center">
+        <IrisIcon />
+        <Text size="sm" style={{ fontWeight: 500 }}>Acme Corp · 5 agreements · Contract terms</Text>
+      </Inline>
+      {collapsedViaIris ? (
+        <Inline gap="xs" align="center">
+          <span style={{ fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500 }}>Continued in Iris</span>
+          <Icon name="arrow-right" size={13} color="var(--ink-purple-100, #4B47C8)" />
+        </Inline>
+      ) : (
+        <button onClick={() => setCollapsed(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+          <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px 0' }}>
+        <Inline gap="xs" align="center">
+          <IrisIcon />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+        </Inline>
+        <button onClick={() => setCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+          <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
+        </button>
+      </div>
+
+      <div style={{ padding: '10px 18px 14px' }}>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)' }}>
+          I found <strong>5 agreements</strong> with Acme Corp. When it comes to contract terms and termination, I can audit specific clauses across all documents. What would you like to focus on?
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, padding: '0 18px 14px' }}>
+        {chips.map(chip => (
+          <button
+            key={chip}
+            onClick={() => handleSubmit(chip)}
+            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f8)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ margin: '0 18px 14px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+        <input
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); setTextInput(''); } }}
+          placeholder="Ask about contract terms..."
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+        />
+        <button
+          onClick={() => { handleSubmit(textInput); setTextInput(''); }}
+          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
+        >
+          <Icon name="arrow-up" size={13} />
+        </button>
+      </div>
+
+      <div style={{ padding: '10px 18px 14px', borderTop: '1px solid var(--ink-border-color-subtle)', textAlign: 'center' as const }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-text-secondary)', fontStyle: 'italic' }}>
+          Responses are generated with AI and should not be used as legal advice.{' '}
+          <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Learn how we use AI at Docusign.</span>
+        </span>
+      </div>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════
    Acme Answer Card (current-state entity card)
@@ -3792,43 +4093,318 @@ function AcmePartyCard({ onContinue, onBuildWorksheet }: { onContinue: (msg: str
    Auto-Renewal Risk Answer Block (question-based, cross-supplier)
    ═══════════════════════════════════════ */
 
-function AutoRenewRiskBlock({ onBuildWorksheet }: { onBuildWorksheet: (type: string) => void }) {
-  const [reportBuilt, setReportBuilt] = useState(false);
+function AcmeUpdatesBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
+  const [textInput, setTextInput] = useState('');
   const fade = useFadeIn(120, 300);
 
-  return (
-    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '18px 20px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Iris attribution */}
-      <Inline gap="xs" align="center">
-        <Text size="xs" color="secondary">Scanned 687 agreements</Text>
-        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
-      </Inline>
+  const chips = [
+    "What's expiring soon?",
+    'Summarize my relationship with Acme',
+    'Are there any price increase clauses?',
+    'Show me the latest SOW',
+  ];
 
-      {/* Natural language answer */}
-      <div style={{ fontSize: 14, lineHeight: 1.75, color: 'var(--ink-text-primary)' }}>
-        You have <strong>8 contracts</strong> with active auto-renewal clauses. Two of them — Salesforce ($420K/yr) and Workday ($310K/yr) — have already passed their cancellation windows and have likely auto-renewed for another year. Zendesk ($96K/yr) has a notice deadline in 9 days. The remaining five are on track, with notice windows opening between July and November.
+  const handleSubmit = (msg: string) => {
+    if (!msg.trim()) return;
+    onFollowUp(msg.trim());
+  };
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: 'var(--ink-purple-5, #f5f4fd)', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+
+      {/* Iris attribution */}
+      <div style={{ padding: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <IrisIcon />
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>· suggested questions about Acme</span>
       </div>
 
-      {/* CTA + feedback */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 }}>
-        <Inline gap="xs">
-          <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-          <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-        </Inline>
-        {!reportBuilt ? (
+      <div style={{ padding: '12px 18px 8px', display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+        {chips.map(chip => (
           <button
-            onClick={() => { setReportBuilt(true); onBuildWorksheet('auto-renew-risk'); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+            key={chip}
+            onClick={() => handleSubmit(chip)}
+            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-10, #eeecfb)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
           >
-            <Icon name="table" size={14} />
-            Open Report
+            {chip}
           </button>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>
-            <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
-            Report building…
-          </div>
-        )}
+        ))}
+      </div>
+
+      <div style={{ margin: '8px 18px 16px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+        <input
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); setTextInput(''); } }}
+          placeholder="Ask something about Acme..."
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+        />
+        <button
+          onClick={() => { handleSubmit(textInput); setTextInput(''); }}
+          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
+        >
+          <Icon name="arrow-up" size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AcmeDeepBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const fade = useFadeIn(120, 300);
+
+  const chips = [
+    'Show me pricing and licensing terms',
+    'Flag any price escalation clauses',
+    'Build a pricing comparison table',
+  ];
+
+  const handleSubmit = (msg: string) => {
+    if (!msg.trim()) return;
+    setCollapsedViaIris(true);
+    setTextInput('');
+    setTimeout(() => setCollapsed(true), 80);
+    setTimeout(() => onFollowUp(msg.trim()), 150);
+  };
+
+  if (collapsed) return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--ink-purple-5, #f5f4fd)', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 12, padding: '10px 16px', marginBottom: 16 }}>
+      <Inline gap="small" align="center">
+        <IrisIcon />
+        <Text size="sm" style={{ fontWeight: 500 }}>Acme Corp · 23 agreements · Products & pricing</Text>
+      </Inline>
+      {collapsedViaIris ? (
+        <Inline gap="xs" align="center">
+          <span style={{ fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500 }}>Continued in Iris</span>
+          <Icon name="arrow-right" size={13} color="var(--ink-purple-100, #4B47C8)" />
+        </Inline>
+      ) : (
+        <button onClick={() => setCollapsed(false)} style={{ fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Show</button>
+      )}
+    </div>
+  );
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: 'var(--ink-purple-5, #f5f4fd)', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <IrisIcon />
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>· Acme Corp · 23 agreements</span>
+      </div>
+      <div style={{ padding: '10px 18px 12px' }}>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.65, color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}>
+          Across your <strong>23 Acme agreements</strong>, you purchase <strong>3 categories</strong> of products and services: <strong>Cloud storage &amp; hosting</strong> (10 agreements, volume-tiered pricing), <strong>Managed IT support</strong> (8 agreements, flat fee), and <strong>Professional services</strong> (5 agreements, time &amp; materials). Total committed spend is <strong>$225K/yr</strong>.
+        </p>
+      </div>
+      <div style={{ padding: '0 18px 8px', display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+        {chips.map(chip => (
+          <button
+            key={chip}
+            onClick={() => handleSubmit(chip)}
+            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-10, #eeecfb)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+      <div style={{ margin: '4px 18px 16px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+        <input
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); setTextInput(''); } }}
+          placeholder="Ask about Acme products and pricing..."
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+        />
+        <button
+          onClick={() => { handleSubmit(textInput); setTextInput(''); }}
+          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
+        >
+          <Icon name="arrow-up" size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AcmeSimpleBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const fade = useFadeIn(120, 300);
+
+  const chips = [
+    'Summarize my relationship with Acme',
+    "What's expiring soon?",
+    'What products do we buy from them?',
+  ];
+
+  const handleSubmit = (msg: string) => {
+    if (!msg.trim()) return;
+    onFollowUp(msg.trim());
+  };
+
+  if (collapsed) return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Inline gap="small" align="center">
+        <IrisIcon />
+        <Text size="sm" style={{ fontWeight: 500 }}>Acme Corp · 4 agreements</Text>
+      </Inline>
+      <button onClick={() => setCollapsed(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+        <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
+      </button>
+    </div>
+  );
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px 0' }}>
+        <Inline gap="xs" align="center">
+          <IrisIcon />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+        </Inline>
+        <button onClick={() => setCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+          <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
+        </button>
+      </div>
+
+      <div style={{ padding: '10px 18px 14px' }}>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)' }}>
+          I found <strong>4 agreements</strong> with Acme Corp — an established software vendor with <strong>$225K/yr</strong> in committed spend across an MSA, SOW, NDA, and DPA. Two agreements are approaching action before Q3. What would you like to know?
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, padding: '0 18px 14px' }}>
+        {chips.map(chip => (
+          <button
+            key={chip}
+            onClick={() => handleSubmit(chip)}
+            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f8)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ margin: '0 18px 14px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+        <input
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); setTextInput(''); } }}
+          placeholder="Ask a follow-up..."
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+        />
+        <button
+          onClick={() => { handleSubmit(textInput); setTextInput(''); }}
+          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
+        >
+          <Icon name="arrow-up" size={13} />
+        </button>
+      </div>
+
+      <div style={{ padding: '10px 18px 14px', borderTop: '1px solid var(--ink-border-color-subtle)', textAlign: 'center' as const }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-text-secondary)', fontStyle: 'italic' }}>
+          Responses are generated with AI and should not be used as legal advice.{' '}
+          <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Learn how we use AI at Docusign.</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function AutoRenewRiskBlock({ onBuildWorksheet, onFollowUp }: { onBuildWorksheet: (type: string) => void; onFollowUp: (msg: string) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const fade = useFadeIn(120, 300);
+
+  const chips = [
+    'Which ones have already passed their notice deadline?',
+    'Which ones expire the soonest?',
+    'Can any of these still be cancelled?',
+  ];
+
+  const handleSubmit = (msg: string) => {
+    if (!msg.trim()) return;
+    onFollowUp(msg.trim());
+  };
+
+  if (collapsed) return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Inline gap="small" align="center">
+        <IrisIcon />
+        <Text size="sm" style={{ fontWeight: 500 }}>Auto-renewal risk — 8 contracts</Text>
+      </Inline>
+      <button onClick={() => setCollapsed(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+        <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
+      </button>
+    </div>
+  );
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px 0' }}>
+        <Inline gap="xs" align="center">
+          <IrisIcon />
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+        </Inline>
+        <button onClick={() => setCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+          <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
+        </button>
+      </div>
+
+      {/* Answer */}
+      <div style={{ padding: '10px 18px 14px' }}>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)' }}>
+          I've found <strong>8 contracts</strong> with active auto-renewal clauses. Salesforce and Workday have already passed their cancellation windows — they've likely renewed for another year. Zendesk has a notice deadline in 9 days. What else would you like to understand about these contracts?
+        </p>
+      </div>
+
+      {/* Chips */}
+      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, padding: '0 18px 14px' }}>
+        {chips.map(chip => (
+          <button
+            key={chip}
+            onClick={() => handleSubmit(chip)}
+            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f8)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div style={{ margin: '0 18px 14px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+        <input
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); setTextInput(''); } }}
+          placeholder="Ask a follow-up..."
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+        />
+        <button
+          onClick={() => { handleSubmit(textInput); setTextInput(''); }}
+          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
+        >
+          <Icon name="arrow-up" size={13} />
+        </button>
+      </div>
+
+      {/* Disclaimer */}
+      <div style={{ padding: '10px 18px 14px', borderTop: '1px solid var(--ink-border-color-subtle)', textAlign: 'center' as const }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-text-secondary)', fontStyle: 'italic' }}>
+          Responses are generated with AI and should not be used as legal advice.{' '}
+          <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Learn how we use AI at Docusign.</span>
+        </span>
       </div>
     </div>
   );
@@ -5255,7 +5831,7 @@ export default function App() {
   const handleBuildWorksheet = useCallback((type: string) => {
     setWorksheetType(type);
     setWorksheetLoading(true);
-    if (type === 'vendor-exposure-acme' || type === 'renewal-scan' || type === 'auto-renew-risk' || type === 'deep-analysis' || type === 'finance-erp') {
+    if (type === 'vendor-exposure-acme' || type === 'renewal-scan' || type === 'auto-renew-risk' || type === 'deep-analysis' || type === 'finance-erp' || type === 'termination-audit') {
       setTimeout(() => {
         setWorksheetLoading(false);
         setShowWorksheetView(true);
@@ -5273,7 +5849,7 @@ export default function App() {
     const ml = msg.toLowerCase();
     const flowId = ml.includes('cost center') || ml.includes('actual spend') || ml.includes('discounts') ? 'sq_finance'
       : ml.includes('product') ? 'sq_deep'
-      : 'sq_current';
+      : 'sq_deep';
     setIrisFlowId(flowId);
     setShowIrisSidebar(true);
   }, []);
@@ -5772,7 +6348,7 @@ export default function App() {
               setSubmittedSearch(q);
               setSelectedQueryId(id);
               setShowSuggestions(false);
-              if (id === 'sq_deep' || id === 'sq_current' || id === 'sq_finance') setAcmeCardKey(k => k + 1);
+              if (id === 'sq_finance') setAcmeCardKey(k => k + 1);
             }} />
           </div>
         )}
@@ -5785,13 +6361,22 @@ export default function App() {
         <DataTable columns={requestColumns} data={filteredRequests} getRowKey={(row) => row.id} stickyHeader showColumnControl rowHeight="tall" emptyMessage="No requests found" pagination={{ page: 1, pageSize: 10, totalItems: filteredRequests.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
       ) : isNavigatorView ? (
         <>
-          {submittedSearch && (selectedQueryId === 'sq_deep' || selectedQueryId === 'sq_current' || selectedQueryId === 'sq_finance') && (
+          {submittedSearch && selectedQueryId === 'sq_updates' && (
+            <AcmeUpdatesBlock onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_updates'); setShowIrisSidebar(true); }} />
+          )}
+          {submittedSearch && selectedQueryId === 'sq_deep' && (
+            <AcmeDeepBlock onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_deep'); setShowIrisSidebar(true); }} />
+          )}
+          {submittedSearch && selectedQueryId === 'sq_finance' && (
             <AcmeAnswerCard key={`acme-${acmeCardKey}`} onChipSelect={handleAcmeChipSelect} flowId={selectedQueryId} />
           )}
           {submittedSearch && selectedQueryId === 'sq_question' && (
-            <AutoRenewRiskBlock onBuildWorksheet={handleBuildWorksheet} />
+            <AutoRenewRiskBlock onBuildWorksheet={handleBuildWorksheet} onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_autorenew'); setShowIrisSidebar(true); }} />
           )}
-          {submittedSearch && selectedQueryId !== 'sq_deep' && selectedQueryId !== 'sq_current' && selectedQueryId !== 'sq_finance' && selectedQueryId !== 'sq_question' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
+          {submittedSearch && selectedQueryId === 'sq_termination' && (
+            <AcmeTerminationBlock onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_termination'); setShowIrisSidebar(true); }} />
+          )}
+          {submittedSearch && selectedQueryId !== 'sq_updates' && selectedQueryId !== 'sq_deep' && selectedQueryId !== 'sq_finance' && selectedQueryId !== 'sq_question' && selectedQueryId !== 'sq_termination' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
           {submittedSearch && filteredNavigator.length < 687 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '3px 12px' }}>
