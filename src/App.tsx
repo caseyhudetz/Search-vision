@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
+import { SearchBarLabPage } from './SearchBarLab';
 import {
   DocuSignShell,
   AgreementTableView,
@@ -6,7 +8,6 @@ import {
   PageHeader,
   FilterBar,
   Button,
-  Banner,
   Badge,
   ComboButton,
   AIIcon,
@@ -80,6 +81,11 @@ const tableRowStaggerStyles = `
 .iris-thinking-dot:nth-child(2) { animation-delay: 0.18s; }
 .iris-thinking-dot:nth-child(3) { animation-delay: 0.36s; }
 
+@keyframes iris-thinking-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 /* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   [data-ink-component="DataTable"] tbody tr {
@@ -113,6 +119,58 @@ const tableRowStaggerStyles = `
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
+}
+
+/* Search input wide enough to show full queries */
+.search-input-wrapper input[type="text"],
+.search-input-wrapper input:not([type]) {
+  min-width: min(820px, 70vw) !important;
+  width: min(820px, 70vw) !important;
+}
+
+/* ── Full Screen Iris transitions ── */
+@keyframes irisEnter {
+  from { opacity: 0; transform: scale(0.975); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes irisExit {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.975); }
+}
+.iris-fs-enter { animation: irisEnter 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.iris-fs-exit  { animation: irisExit  0.22s ease-in forwards; }
+
+@keyframes fsStepIn {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fs-step-in { animation: fsStepIn 0.28s cubic-bezier(0.33, 0, 0.2, 1) forwards; }
+
+@keyframes fsAnswerIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fs-answer-in { animation: fsAnswerIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+/* ── Spend AI Preview (Show More) ── */
+@keyframes previewIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.spend-preview-in { animation: previewIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+@keyframes previewOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.spend-preview-out { animation: previewOut 0.18s ease-in forwards; }
+
+/* ── Navigator table: gray header + column dividers ── */
+[data-ink-component="DataTable"] thead th {
+  background: #f5f5f8 !important;
+}
+[data-ink-component="DataTable"] th:not(:last-child),
+[data-ink-component="DataTable"] td:not(:last-child) {
+  border-right: 1px solid var(--ink-border-color-subtle, #e8e8ec);
 }
 `;
 
@@ -184,16 +242,14 @@ function FadeIn({ children, keyProp: _keyProp }: { children: React.ReactNode; ke
    ═══════════════════════════════════════ */
 
 const SUGGESTED_QUESTIONS = [
-  { id: 'sq_updates', icon: 'bell' as const, query: 'Acme', label: 'Simple Input' as string | undefined, description: 'Single entity lookup · name input, intent routing, guided chat' },
-  { id: 'sq_question', icon: 'refresh' as const, query: 'Which of our contracts are at risk of auto-renewing?', label: 'Question: Auto-renewal risk' as string | undefined, description: 'Cross-supplier question · contracts with active auto-renewal clauses and approaching notice windows' },
-  { id: 'sq_deep', icon: 'chart-bar' as const, query: 'What products and services do we purchase from this vendor?', label: 'Products & Pricing' as string | undefined, description: 'Deep analysis · products, pricing, and terms across all agreements' },
-  { id: 'sq_finance', icon: 'currency-dollar' as const, query: 'Acme', label: 'Cost & Spend Analysis' as string | undefined, description: 'External operational data · Finance & ERP integration with actuals vs contract value' },
-  { id: 'sq_autorenew', icon: 'bell' as const, query: 'Alert me to contracts at risk of auto-renewing', description: 'Future state v2 · Proactive monitoring, risk scoring, and recommended actions' },
+  { id: 'sq_updates', icon: 'bell' as const, query: 'Acme', label: 'Keyword search' as string | undefined },
+  { id: 'sq_renewal', icon: 'refresh' as const, query: 'Acme contract renewal', label: 'Short phrase' as string | undefined },
+  { id: 'sq_deep', icon: 'chart-bar' as const, query: 'What products and services do we purchase from Acme?', label: 'Full question → Worksheet' as string | undefined },
+  { id: 'sq_spend', icon: 'chart-bar' as const, query: "What's our committed spend by vendor category?", label: 'Full question → Report' as string | undefined },
   { id: 'sq3', icon: 'calendar' as const, query: 'Show me all vendor contracts expiring in the next 6 months', description: 'v1 · AI-guided analysis, risk identification, and structured worksheet' },
-  { id: 'sq_termination', icon: 'document' as const, query: 'Check contract terms for Acme', label: 'Acme: Contract Terms Audit' as string | undefined, description: 'Intent routing · triage termination clauses, survival clauses, or full audit table' },
 ];
 
-function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) => void }) {
+function SuggestionsDropdown({ onSelect, filterIds, fsMode }: { onSelect: (q: string, id: string) => void; filterIds?: string[]; fsMode?: boolean }) {
   const SectionHeader = ({ label }: { label: string }) => (
     <div style={{
       padding: '10px 16px 5px',
@@ -205,35 +261,30 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
     </div>
   );
 
-  const FlowItem = ({ q, badge }: { q: typeof SUGGESTED_QUESTIONS[0]; badge?: React.ReactNode }) => (
-    <button
-      onMouseDown={(e) => { e.preventDefault(); onSelect(q.query, q.id); }}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%',
-        padding: '9px 16px', background: 'none', border: 'none',
-        cursor: 'pointer', textAlign: 'left' as const,
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f7)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
-    >
-      <Icon name={q.icon} size={15} color="var(--ink-text-secondary)" style={{ flexShrink: 0, marginTop: 2 }} />
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)', lineHeight: 1.4 }}>{q.label || q.query}</span>
-          {badge}
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 2 }}>{q.description}</div>
-      </div>
-    </button>
-  );
+  const FlowItem = ({ q, badge }: { q: typeof SUGGESTED_QUESTIONS[0]; badge?: React.ReactNode }) => {
+    return (
+      <button
+        onMouseDown={(e) => { e.preventDefault(); onSelect(q.query, q.id); }}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' as const }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f7)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+      >
+        <Icon name={q.icon} size={14} color="var(--ink-text-secondary)" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13, color: 'var(--ink-text-primary)', flex: 1, minWidth: 0 }}>{q.label || q.query}</span>
+        {badge}
+      </button>
+    );
+  };
+
+  const show = (id: string) => !filterIds || filterIds.includes(id);
 
   const sq_updates = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_updates')!;
-  const sq_question = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_question')!;
+  const sq_renewal = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_renewal')!;
   const sq_deep = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_deep')!;
-  const sq_finance = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_finance')!;
-  const sq_autorenew = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_autorenew')!;
   const sq3 = SUGGESTED_QUESTIONS.find(q => q.id === 'sq3')!;
-  const sq_termination = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_termination')!;
+  const sq_spend = SUGGESTED_QUESTIONS.find(q => q.id === 'sq_spend')!;
+
+  const mainFlows = [sq_updates, sq_renewal, sq_deep, sq_spend].filter(q => show(q.id));
 
   return (
     <div style={{
@@ -244,27 +295,22 @@ function SuggestionsDropdown({ onSelect }: { onSelect: (q: string, id: string) =
         Demo Flows
       </div>
 
-      <SectionHeader label="Search and Filter" />
-      <FlowItem q={sq_updates} />
-      <FlowItem q={sq_question} />
+      {mainFlows.map(q => <FlowItem key={q.id} q={q} />)}
 
-      <SectionHeader label="Deep Analysis" />
-      <FlowItem q={sq_deep} />
-      <FlowItem q={sq_termination} />
-
-      <SectionHeader label="External Operational Data" />
-      <FlowItem q={sq_finance} />
-
-      <SectionHeader label="Archive" />
-      <FlowItem
-        q={sq3}
-        badge={
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-green-80, #2f9e44)', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-green-80, #2f9e44)', flexShrink: 0 }} />
-            v1
-          </span>
-        }
-      />
+      {show('sq3') && (
+        <>
+          <SectionHeader label="Archive" />
+          <FlowItem
+            q={sq3}
+            badge={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, color: 'var(--ink-green-80, #2f9e44)', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-green-80, #2f9e44)', flexShrink: 0 }} />
+                v1
+              </span>
+            }
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -283,6 +329,166 @@ function IrisThinkingBubble() {
   );
 }
 
+function DisambiguationCard({ question, options, onSelect, selectedOption }: {
+  question: string;
+  options: string[];
+  onSelect: (opt: string) => void;
+  selectedOption?: string;
+}) {
+  const [customInput, setCustomInput] = useState('');
+  const isAnswered = !!selectedOption;
+  const isCustomSelected = isAnswered && !options.includes(selectedOption!);
+
+  const handleCustomSubmit = () => {
+    if (isAnswered) return;
+    onSelect(customInput.trim() || 'Something else');
+  };
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ padding: '13px 16px 11px', borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
+        <Text size="sm" style={{ fontWeight: 600 }}>{question}</Text>
+      </div>
+      {options.map((opt, i) => (
+        <button
+          key={opt}
+          onClick={() => !isAnswered && onSelect(opt)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+            padding: '11px 16px', textAlign: 'left', fontFamily: 'inherit',
+            background: selectedOption === opt ? 'var(--ink-purple-5, #f5f4fd)' : '#fff',
+            border: 'none', borderTop: '1px solid var(--ink-border-color-subtle)',
+            cursor: isAnswered ? 'default' : 'pointer',
+            opacity: isAnswered && selectedOption !== opt ? 0.38 : 1,
+            transition: 'background 120ms, opacity 150ms',
+          }}
+          onMouseEnter={(e) => { if (!isAnswered) (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f4fd)'; }}
+          onMouseLeave={(e) => { if (!isAnswered) (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+        >
+          <span style={{
+            width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+            background: selectedOption === opt ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-neutral-fade-10, #f1f1f4)',
+            color: selectedOption === opt ? '#fff' : 'var(--ink-text-secondary)',
+            fontSize: 11, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background 150ms, color 150ms',
+          }}>{i + 1}</span>
+          <Text size="sm" style={{ fontWeight: selectedOption === opt ? 500 : 400 }}>{opt}</Text>
+        </button>
+      ))}
+
+      {/* Something else row */}
+      <div style={{
+        borderTop: '1px solid var(--ink-border-color-subtle)',
+        padding: '8px 12px 8px 16px',
+        display: 'flex', alignItems: 'center', gap: 10,
+        background: isCustomSelected ? 'var(--ink-purple-5, #f5f4fd)' : '#fff',
+        opacity: isAnswered && !isCustomSelected ? 0.38 : 1,
+        transition: 'background 120ms, opacity 150ms',
+      }}>
+        <Icon name="edit" size={13} color={isCustomSelected ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-secondary)'} />
+        {isCustomSelected ? (
+          <Text size="sm" style={{ flex: 1, fontWeight: 500, color: 'var(--ink-purple-100, #4B47C8)' }}>{selectedOption}</Text>
+        ) : (
+          <>
+            <input
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCustomSubmit(); }}
+              placeholder="Something else..."
+              disabled={isAnswered}
+              style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+            />
+            <button
+              onClick={handleCustomSubmit}
+              disabled={isAnswered}
+              style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: isAnswered ? 'default' : 'pointer', padding: '3px 6px', fontFamily: 'inherit', flexShrink: 0 }}
+            >Skip</button>
+            <button
+              onClick={handleCustomSubmit}
+              disabled={isAnswered}
+              style={{ width: 26, height: 26, borderRadius: '50%', border: 'none', background: customInput.trim() ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-neutral-fade-10, #f1f1f4)', color: customInput.trim() ? '#fff' : 'var(--ink-text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isAnswered ? 'default' : 'pointer', flexShrink: 0, transition: 'background 150ms' }}
+            >
+              <Icon name="arrow-up" size={12} />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MultiStepDisambiguationCard({ steps, onComplete }: {
+  steps: { question: string; options: string[] }[];
+  onComplete: (answers: string[]) => void;
+}) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [answers, setAnswers] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState('');
+
+  const step = steps[currentStep];
+  const currentAnswer = answers[currentStep];
+  const isLastStep = currentStep === steps.length - 1;
+
+  const handleSelect = (opt: string) => {
+    const newAnswers = [...answers];
+    newAnswers[currentStep] = opt;
+    setAnswers(newAnswers);
+    if (isLastStep) {
+      setTimeout(() => onComplete(newAnswers), 400);
+    } else {
+      setTimeout(() => setCurrentStep(s => s + 1), 350);
+    }
+  };
+
+  const canGoNext = !!answers[currentStep] && !isLastStep;
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, overflow: 'hidden' }}>
+      {/* Header row */}
+      <div style={{ padding: '13px 16px 11px', borderBottom: '1px solid var(--ink-border-color-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text size="sm" style={{ fontWeight: 600, flex: 1, marginRight: 12 }}>{step.question}</Text>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <button
+            onClick={() => setCurrentStep(s => Math.max(0, s - 1))}
+            disabled={currentStep === 0}
+            style={{ background: 'none', border: 'none', cursor: currentStep === 0 ? 'default' : 'pointer', opacity: currentStep === 0 ? 0.3 : 1, padding: '2px 5px', display: 'flex', alignItems: 'center' }}>
+            <Icon name="chevron-left" size={13} color="var(--ink-text-secondary)" />
+          </button>
+          <Text size="xs" color="secondary" style={{ minWidth: 36, textAlign: 'center' as const }}>{currentStep + 1} of {steps.length}</Text>
+          <button
+            onClick={() => canGoNext && setCurrentStep(s => s + 1)}
+            disabled={!canGoNext}
+            style={{ background: 'none', border: 'none', cursor: canGoNext ? 'pointer' : 'default', opacity: canGoNext ? 1 : 0.3, padding: '2px 5px', display: 'flex', alignItems: 'center' }}>
+            <Icon name="chevron-right" size={13} color="var(--ink-text-secondary)" />
+          </button>
+        </div>
+      </div>
+      {/* Options */}
+      {step.options.map((opt, i) => (
+        <button key={opt} onClick={() => handleSelect(opt)}
+          style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', background: currentAnswer === opt ? 'var(--ink-purple-5)' : '#fff', border: 'none', borderTop: '1px solid var(--ink-border-color-subtle)', cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ width: 22, height: 22, borderRadius: '50%', background: currentAnswer === opt ? 'var(--ink-purple-100)' : 'var(--ink-neutral-fade-10)', color: currentAnswer === opt ? '#fff' : 'var(--ink-text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+            <Text size="sm" style={{ color: currentAnswer === opt ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-primary)' }}>{opt}</Text>
+          </div>
+          {currentAnswer === opt && <Icon name="arrow-right" size={13} color="var(--ink-purple-100, #4B47C8)" />}
+        </button>
+      ))}
+      {/* Something else */}
+      <div style={{ borderTop: '1px solid var(--ink-border-color-subtle)', padding: '8px 12px 8px 16px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff' }}>
+        <Icon name="edit" size={13} color="var(--ink-text-secondary)" />
+        <input value={customInput} onChange={e => setCustomInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && customInput.trim()) handleSelect(customInput.trim()); }}
+          placeholder="Something else..."
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, fontFamily: 'inherit', background: 'transparent', color: 'var(--ink-text-primary)' }} />
+        <button onClick={() => handleSelect(customInput.trim() || 'Skip')}
+          style={{ fontSize: 12, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink-text-secondary)', padding: '4px 8px' }}>Skip</button>
+      </div>
+    </div>
+  );
+}
+
 function IrisUserBubble({ text }: { text: string }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -293,28 +499,155 @@ function IrisUserBubble({ text }: { text: string }) {
   );
 }
 
-function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetMode, flowId }: {
-  question: string; followUp?: string; onClose: () => void; onBuildWorksheet?: (type: string) => void; worksheetMode?: boolean; flowId?: string;
+function QuickWorksheetFlow({ question, initialReady, onOpenWorksheetEntry, scrollRef }: {
+  question: string; initialReady: boolean; onOpenWorksheetEntry: () => void; scrollRef: React.RefObject<HTMLDivElement>;
+}) {
+  const [phase, setPhase] = useState<'thinking' | 'answer' | 'pivot' | 'chip'>('thinking');
+
+  useEffect(() => {
+    if (!initialReady) return;
+    const t1 = setTimeout(() => setPhase('answer'), 800);
+    const t2 = setTimeout(() => setPhase('pivot'), 1600);
+    const t3 = setTimeout(() => setPhase('chip'), 2200);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [initialReady]);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [phase]);
+
+  return (
+    <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <IrisUserBubble text={question} />
+
+      {!initialReady && <IrisThinkingBubble />}
+
+      {initialReady && (
+        <>
+          {/* Mini step indicator */}
+          <div className="iris-fade-in" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="status-check" size={12} color="var(--ink-green-80, #2f9e44)" />
+            <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>Read 10 Acme agreements</span>
+          </div>
+
+          {phase === 'thinking' && <IrisThinkingBubble />}
+
+          {phase !== 'thinking' && (
+            <div className="iris-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <Inline gap="xs" align="center">
+                <IrisIcon />
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+              </Inline>
+              <Text size="sm" style={{ lineHeight: 1.65 }}>
+                Across your <strong>10 Acme agreements</strong>, you purchase <strong>3 categories</strong> of products and services: Cloud storage &amp; hosting, Managed IT support, and Professional services. Total committed spend is <strong>$225K/yr</strong>.
+              </Text>
+            </div>
+          )}
+
+          {(phase === 'pivot' || phase === 'chip') && (
+            <div className="iris-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-primary)' }}>
+                I can help you track and compare this across all your agreements in a structured worksheet — no manual setup needed. Want me to set that up?
+              </Text>
+            </div>
+          )}
+
+          {phase === 'chip' && (
+            <button onClick={onOpenWorksheetEntry} className="chip-fade-in" style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: '#fff', border: '1px solid var(--ink-border-color-default)',
+              borderRadius: 100, padding: '8px 14px', cursor: 'pointer', fontSize: 13,
+              fontFamily: 'inherit', color: 'var(--ink-text-primary)', textAlign: 'left' as const,
+              maxWidth: 380, transition: 'background 0.12s, border-color 0.12s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
+            >
+              <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+              Yes, build the worksheet
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CitationBadge({ number, title, excerpt }: { number: number; title: string; excerpt: string }) {
+  const [hovered, setHovered] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const badgeRef = useRef<HTMLSpanElement>(null);
+
+  const handleMouseEnter = () => {
+    if (badgeRef.current) {
+      const r = badgeRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + window.scrollY + 6, left: r.left + window.scrollX + r.width / 2 });
+    }
+    setHovered(true);
+  };
+
+  return (
+    <span style={{ display: 'inline-block', verticalAlign: 'super', lineHeight: 1, marginLeft: 2 }}>
+      <span
+        ref={badgeRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          height: 18, minWidth: 18, padding: '0 5px',
+          fontSize: 11, fontWeight: 600, lineHeight: 1,
+          color: hovered ? 'var(--ink-white-100, #fff)' : 'var(--ink-cobalt-100, #4B47C8)',
+          background: hovered ? 'var(--ink-cobalt-100, #4B47C8)' : 'var(--ink-cobalt-10, #eeeeff)',
+          border: '1px solid var(--ink-cobalt-30, #c5c3f5)',
+          borderRadius: 4,
+          cursor: 'default',
+          transition: 'background 0.12s, color 0.12s',
+          userSelect: 'none',
+        }}
+      >
+        {number}
+      </span>
+      {hovered && createPortal(
+        <span style={{
+          position: 'absolute', top: pos.top, left: pos.left, transform: 'translateX(-50%)',
+          width: 280, background: '#fff',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.08)',
+          borderRadius: 8, padding: 16, zIndex: 99999,
+          animation: 'citationFadeIn 0.15s ease',
+          pointerEvents: 'none',
+        }}>
+          <span style={{ display: 'block', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-text-secondary)', marginBottom: 4 }}>Source</span>
+          <span style={{ display: 'block', fontSize: 14, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--ink-text-primary)', marginBottom: 6 }}>{title}</span>
+          <span style={{ display: 'block', fontSize: 12, fontWeight: 400, color: 'var(--ink-text-secondary)', lineHeight: 1.55 }}>"{excerpt.length > 160 ? excerpt.slice(0, 160) + '…' : excerpt}"</span>
+          <style>{`@keyframes citationFadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-4px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }`}</style>
+        </span>,
+        document.body
+      )}
+    </span>
+  );
+}
+
+function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, onBuildReport, worksheetMode, flowId, skipThinking, onOpenWorksheetEntry }: {
+  question: string; followUp?: string; onClose: () => void; onBuildWorksheet?: (type: string) => void; onBuildReport?: (measure: string, groupBy: string) => void; worksheetMode?: boolean; flowId?: string; skipThinking?: boolean; onOpenWorksheetEntry?: (query: string) => void;
 }) {
   const [inputValue, setInputValue] = useState('');
   const [mounted, setMounted] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [followUpReady, setFollowUpReady] = useState(false);
+  const [worksheetRequested, setWorksheetRequested] = useState(false);
+  const [wsCompleteReady, setWsCompleteReady] = useState(false);
   const _qi = question.toLowerCase();
   const _isRenewalInit = followUp && ((_qi.includes('6 month') || _qi.includes('six month')) && (_qi.includes('expir') || _qi.includes('renew') || _qi.includes('vendor')));
   const _isDeepInit = flowId === 'sq_deep' && !!followUp;
-  const _isFinanceInit = flowId === 'sq_finance' && !!followUp;
-  const _isTerminationInit = flowId === 'sq_termination' && !!followUp;
   const _isUpdatesInit = flowId === 'sq_updates' && !!followUp;
+  const _isRenewalContractInit = flowId === 'sq_renewal' && !!followUp;
+  const _isSpendInit = flowId === 'sq_spend' && !!followUp;
   const [convStep, setConvStep] = useState(_isRenewalInit ? 1 : 0);
   const [userMessages, setUserMessages] = useState<string[]>(
-    _isDeepInit ? [followUp as string] : _isFinanceInit ? [followUp as string] : _isTerminationInit ? [followUp as string] : _isUpdatesInit ? [followUp as string] : _isRenewalInit ? [followUp as string] : []
+    _isDeepInit ? [followUp as string] : _isUpdatesInit ? [followUp as string] : _isRenewalContractInit ? [followUp as string] : _isSpendInit ? [followUp as string] : _isRenewalInit ? [followUp as string] : []
   );
-  const [financeModalOpen, setFinanceModalOpen] = useState(false);
-  const [financeGranted, setFinanceGranted] = useState(false);
-  const [financeConnecting, setFinanceConnecting] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(420);
-  const [initialReady, setInitialReady] = useState(false);
+  const [initialReady, setInitialReady] = useState(!!skipThinking);
   const [cameFromAnswerBlock] = useState(!!_isRenewalInit);
   const [chipsReady, setChipsReady] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -376,9 +709,15 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   }, [isThinking, initialReady]);
 
   useEffect(() => {
-    if ((!_isDeepInit && !_isFinanceInit && !_isTerminationInit && !_isUpdatesInit) || !followUpReady || convStep !== 0) return;
+    if ((!_isDeepInit && !_isUpdatesInit && !_isRenewalContractInit && !_isSpendInit) || !followUpReady || convStep !== 0) return;
     setConvStep(1);
   }, [followUpReady]);
+
+  useEffect(() => {
+    if (flowId !== 'ws_complete') return;
+    const t = setTimeout(() => setWsCompleteReady(true), 800);
+    return () => clearTimeout(t);
+  }, [flowId]);
 
   const q = question.toLowerCase();
   const fq = (followUp || '').toLowerCase();
@@ -392,12 +731,17 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
   const isSLAFlow = q.includes('software') && q.includes('sla');
   const isPartyFlow = flowId === 'sq_current';
   const isUpdatesFlow = flowId === 'sq_updates';
+  const isRenewalContractFlow = flowId === 'sq_renewal';
   const isDeepAnalysisFlow = flowId === 'sq_deep';
-  const isFinanceFlow = flowId === 'sq_finance';
-  const isTerminationFlow = flowId === 'sq_termination';
+  const isSpendFlow = flowId === 'sq_spend';
+  const isQuickWorksheetFlow = flowId === 'sq_deep_quick';
+  const isWsCompleteFlow = flowId === 'ws_complete';
+  const isReportPath = isSpendFlow && (userMessages[0] || followUp || '') === 'Build a spend report';
+  const deepEntryChip = isDeepAnalysisFlow ? (followUp || userMessages[0] || '') : '';
+  const isPricingTermsPath = deepEntryChip === 'Show me pricing and licensing terms';
+  const isFlagEscalationPath = deepEntryChip === 'Flag any price escalation clauses';
+  const isPricingTablePath = deepEntryChip === 'Build a pricing comparison table';
   const isRenewalScanFlow = (q.includes('6 month') || q.includes('six month')) && (q.includes('expir') || q.includes('renew') || q.includes('vendor'));
-  const isAutoRenewFlow = q.includes('auto-renew') || q.includes('alert me') || q.includes('auto renew');
-
   const sendMessage = (msg: string) => {
     setUserMessages(prev => [...prev, msg]);
     setInputValue('');
@@ -406,9 +750,9 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
       setIsThinking(false);
       if ((isPriceRaiseFlow || isVendorExposureFlow || isSLAFlow || isPartyFlow || isUpdatesFlow) && convStep === 0) setConvStep(1);
       if (isRenewalScanFlow && convStep < 3) setConvStep(convStep + 1);
-      if (isAutoRenewFlow && convStep < 3) setConvStep(convStep + 1);
       if (isDeepAnalysisFlow && convStep < 3) setConvStep(convStep + 1);
-      if (isTerminationFlow && convStep < 2) setConvStep(convStep + 1);
+      if (isRenewalContractFlow && convStep < 4) setConvStep(convStep + 1);
+      if (isSpendFlow && convStep < 1) setConvStep(convStep + 1);
     }, 1300);
   };
 
@@ -423,9 +767,11 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
         <div style={{ marginBottom: 8 }}>
           <button
             onMouseDown={(e) => { e.preventDefault(); setInputValue('By how much?'); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 16, padding: '6px 12px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
+            style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
           >
-            <Icon name="reply" size={13} color="var(--ink-text-secondary)" />
+            <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
             By how much?
           </button>
         </div>
@@ -434,9 +780,11 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
         <div style={{ marginBottom: 8 }}>
           <button
             onMouseDown={(e) => { e.preventDefault(); setInputValue('Are we over our committed seat usage?'); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 16, padding: '6px 12px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
+            style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
           >
-            <Icon name="reply" size={13} color="var(--ink-text-secondary)" />
+            <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
             Are we over our committed seat usage?
           </button>
         </div>
@@ -445,15 +793,17 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
         <div style={{ marginBottom: 8 }}>
           <button
             onMouseDown={(e) => { e.preventDefault(); setInputValue('Which claim windows are still open?'); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 16, padding: '6px 12px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
+            style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
           >
-            <Icon name="reply" size={13} color="var(--ink-text-secondary)" />
+            <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
             Which claim windows are still open?
           </button>
         </div>
       )}
       {isPartyFlow && followUp && convStep === 0 && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           {(followUp.toLowerCase().includes('expir') ? [
             { label: 'What are the notice periods?', val: 'What notice periods apply to those agreements?' },
           ] : [
@@ -462,121 +812,83 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             <button
               key={chip.label}
               onMouseDown={(e) => { e.preventDefault(); setInputValue(chip.val); }}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 16, padding: '6px 12px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
+              style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
             >
-              <Icon name="reply" size={13} color="var(--ink-text-secondary)" />
+              <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
               {chip.label}
             </button>
           ))}
         </div>
       )}
-      {isAutoRenewFlow && chipsReady && !isThinking && convStep === 0 && userMessages.length === 0 && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {[
-            { label: 'Show me the 3 highest risk', scripted: false },
-            { label: 'What counts as high risk?', scripted: false },
-            { label: 'Yes, score by risk', scripted: true },
-          ].map(chip => (
-            <button
-              key={chip.label}
-              onMouseDown={(e) => { e.preventDefault(); if (chip.scripted) setInputValue('Yes, score by risk'); else setInputValue(chip.label); }}
-              style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+      {isUpdatesFlow && !isThinking && convStep === 0 && userMessages.length === 0 && (
+        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {["What's expiring soon?", 'Summarize my relationship with Acme', 'Are there any price increase clauses?'].map(q => (
+            <button key={q}
+              onMouseDown={(e) => { e.preventDefault(); sendMessage(q); }}
+              style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
             >
-              {chip.label}
+              <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+              {q}
             </button>
           ))}
         </div>
       )}
-      {isAutoRenewFlow && chipsReady && !isThinking && convStep === 1 && userMessages.length === 1 && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {[
-            { label: 'Focus on the High risk ones first', scripted: false },
-            { label: 'Yes, build the action list', scripted: true },
-          ].map(chip => (
-            <button
-              key={chip.label}
-              onMouseDown={(e) => { e.preventDefault(); if (chip.scripted) setInputValue('Yes, build the action list'); else setInputValue(chip.label); }}
-              style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+      {isUpdatesFlow && !isThinking && convStep >= 1 && userMessages.length === 1 && (
+        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {["What's the total spend?", 'Are there any auto-renewal clauses?', 'When does the MSA expire?', 'Are there any price escalation caps?'].map(q => (
+            <button key={q}
+              onMouseDown={(e) => { e.preventDefault(); setInputValue(q); }}
+              style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
             >
-              {chip.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {isAutoRenewFlow && chipsReady && !isThinking && convStep === 2 && userMessages.length === 2 && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {[
-            { label: 'Add Contract Value', scripted: true },
-            { label: 'No, looks good', scripted: false },
-          ].map(chip => (
-            <button
-              key={chip.label}
-              onMouseDown={(e) => { e.preventDefault(); if (chip.scripted) setInputValue('Add Contract Value'); else setInputValue(chip.label); }}
-              style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-            >
-              {chip.label}
+              <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+              {q}
             </button>
           ))}
         </div>
       )}
       {isDeepAnalysisFlow && chipsReady && !isThinking && convStep === 0 && userMessages.length === 0 && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
             onMouseDown={(e) => { e.preventDefault(); setInputValue('What products or services do we purchase and how is pricing structured?'); }}
-            style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
           >
+            <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
             What products or services do we purchase and how is pricing structured?
           </button>
         </div>
       )}
       {isDeepAnalysisFlow && chipsReady && !isThinking && convStep === 1 && userMessages.length === 1 && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
-            onMouseDown={(e) => { e.preventDefault(); setInputValue('Break down by pricing model and give examples'); }}
-            style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            onMouseDown={(e) => { e.preventDefault(); setInputValue(isPricingTermsPath ? 'Yes, set it up' : isFlagEscalationPath ? 'Yes, flag them' : isPricingTablePath ? 'Yes, build it' : 'Break down by pricing model and give examples'); }}
+            style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
           >
-            Break down by pricing model and give examples
+            <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+            {isPricingTermsPath ? 'Yes, set it up' : isFlagEscalationPath ? 'Yes, flag them' : isPricingTablePath ? 'Yes, build it' : 'Break down by pricing model and give examples'}
           </button>
         </div>
       )}
-      {isDeepAnalysisFlow && chipsReady && !isThinking && convStep === 2 && userMessages.length === 2 && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+      {isDeepAnalysisFlow && chipsReady && !isThinking && convStep === 2 && userMessages.length === 2 && !isPricingTermsPath && !isPricingTablePath && (
+        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button
-            onMouseDown={(e) => { e.preventDefault(); setInputValue('Yes, set it up'); }}
-            style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            onMouseDown={(e) => { e.preventDefault(); setInputValue(isFlagEscalationPath ? 'Yes, build the tracker' : 'Yes, set it up'); }}
+            style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
           >
-            Yes, set it up
+            <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+            {isFlagEscalationPath ? 'Yes, build the tracker' : 'Yes, set it up'}
           </button>
-        </div>
-      )}
-      {isTerminationFlow && chipsReady && !isThinking && convStep === 1 && userMessages.length === 1 && (
-        <div style={{ marginBottom: 8, display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-          {[
-            { label: 'Which documents are flagged as uncertain?', msg: 'Which documents are flagged as uncertain?' },
-            { label: 'What are the exact notice periods?', msg: 'What are the exact notice periods?' },
-          ].map(chip => (
-            <button
-              key={chip.msg}
-              onMouseDown={(e) => { e.preventDefault(); setInputValue(chip.msg); }}
-              style={{ display: 'inline-flex', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 12px', fontSize: 12, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-            >
-              {chip.label}
-            </button>
-          ))}
         </div>
       )}
       {/* Input card — matches screenshot */}
@@ -595,18 +907,10 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               else if (convStep === 1 && userMessages.length === 1) setInputValue("Yes, let's do that.");
               else if (convStep === 2 && userMessages.length === 2) setInputValue('Add Primary Owner');
             }
-            if (!inputValue && isAutoRenewFlow) {
-              if (convStep === 0 && userMessages.length === 0) setInputValue('Yes, score by risk');
-              else if (convStep === 1 && userMessages.length === 1) setInputValue('Yes, build the action list');
-              else if (convStep === 2 && userMessages.length === 2) setInputValue('Add Contract Value');
-            }
             if (!inputValue && isDeepAnalysisFlow) {
               if (convStep === 0 && userMessages.length === 0) setInputValue('What products or services do we purchase and how is pricing structured?');
-              else if (convStep === 1 && userMessages.length === 1) setInputValue('Break down by pricing model and give examples');
+              else if (convStep === 1 && userMessages.length === 1) setInputValue(isPricingTermsPath ? 'Yes, set it up' : isFlagEscalationPath ? 'Yes, flag them' : isPricingTablePath ? 'Yes, build it' : 'Break down by pricing model and give examples');
               else if (convStep === 2 && userMessages.length === 2) setInputValue('Yes, set it up');
-            }
-            if (!inputValue && isTerminationFlow) {
-              if (convStep === 1 && userMessages.length === 1) setInputValue('Which documents are flagged as uncertain?');
             }
           }}
           placeholder="Type something..."
@@ -618,7 +922,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '3px 8px 3px 6px' }}>
             <Icon name="document" size={12} color="var(--ink-text-secondary)" />
-            <span>{isTerminationFlow ? '5 agreements' : isRenewalScanFlow ? '42 agreements' : isAutoRenewFlow ? '8 agreements' : isDeepAnalysisFlow ? '23 agreements' : isFinanceFlow ? '10 agreements' : isPartyFlow ? '4 agreements' : '10 sources'}</span>
+            <span>{isSpendFlow ? '47 agreements' : isRenewalScanFlow ? '9 agreements' : isDeepAnalysisFlow ? '10 agreements' : isPartyFlow ? '4 agreements' : '10 sources'}</span>
           </div>
           <div style={{ flex: 1 }} />
           <button onClick={handleSend} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: inputValue.trim() ? 'pointer' : 'default', background: 'var(--ink-purple-100, #4B47C8)', opacity: inputValue.trim() ? 1 : 0.38, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'opacity 150ms', color: '#fff' }}>
@@ -648,20 +952,24 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
         <Inline gap="small" align="center">
           <IconButton icon="menu" variant="tertiary" size="small" aria-label="Menu" />
           <Inline gap="xs" align="center">
-            <IrisIcon />
+            <IrisSparkleIcon size={15} />
             <span style={{ fontWeight: 600, fontSize: '14px' }}>Iris</span>
             <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
           </Inline>
         </Inline>
         <Inline gap="xs" align="center">
           <IconButton icon="arrows-out" variant="tertiary" size="small" aria-label="Expand" />
-          <IconButton icon="external-link" variant="tertiary" size="small" aria-label="Open in new tab" />
           <IconButton icon="close" variant="tertiary" size="small" aria-label="Close" onClick={onClose} />
         </Inline>
       </div>
 
-      {/* ── Price-raise flow ── */}
-      {isPriceRaiseFlow ? (
+      {!question && !flowId ? (
+        /* ── Blank — opened from Ask Iris button with no query or flow ── */
+        <>
+          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }} />
+          {irisInputArea}
+        </>
+      ) : isPriceRaiseFlow ? (
         <>
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Original search bubble */}
@@ -679,6 +987,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               <Inline gap="xs">
                 <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                 <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
               </Inline>
             </Stack>
 
@@ -710,6 +1019,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
@@ -747,27 +1057,56 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                   <Inline gap="xs">
                     <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                     <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                    <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                   </Inline>
 
                   {/* Proactive worksheet CTA */}
-                  <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
-                    <Inline gap="xs" align="center">
-                      <IrisIcon />
-                      <Text size="sm" style={{ fontWeight: 600 }}>Build a Price Raise Worksheet?</Text>
-                    </Inline>
-                    <Text size="sm" style={{ lineHeight: 1.6, color: 'var(--ink-text-secondary)' }}>
-                      A worksheet will extract notice deadlines, calculate raise amounts per cap type, and list each eligible agreement in a single view.
-                    </Text>
-                    <Inline gap="small">
-                      <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('price-raise-renewals'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        Yes, build it
-                        <Icon name="arrow-right" size={13} color="#fff" />
-                      </button>
-                      <button style={{ background: 'none', border: 'none', fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', padding: '8px 4px' }}>
-                        No thanks
-                      </button>
-                    </Inline>
-                  </div>
+                  {!(worksheetMode || worksheetRequested) ? (
+                    <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                      <Inline gap="xs" align="center">
+                        <IrisIcon />
+                        <Text size="sm" style={{ fontWeight: 600 }}>Build a Price Raise Worksheet?</Text>
+                      </Inline>
+                      <Text size="sm" style={{ lineHeight: 1.6, color: 'var(--ink-text-secondary)' }}>
+                        A worksheet will extract notice deadlines, calculate raise amounts per cap type, and list each eligible agreement in a single view.
+                      </Text>
+                      <Inline gap="small">
+                        <button onClick={() => { setWorksheetRequested(true); if (onBuildWorksheet) onBuildWorksheet('price-raise-renewals'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Yes, build it
+                          <Icon name="arrow-right" size={13} color="#fff" />
+                        </button>
+                        <button style={{ background: 'none', border: 'none', fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', padding: '8px 4px' }}>
+                          Not right now
+                        </button>
+                      </Inline>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
+                        <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                        <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Price Raise Worksheet built — 3 agreements</Text>
+                      </div>
+                      <Stack gap="small">
+                        <Text size="sm" style={{ lineHeight: 1.65 }}>Your worksheet is ready. Here are some things you might want to explore next:</Text>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                          {[
+                            'Which vendor has the earliest notice deadline?',
+                            'Draft a price raise notice for Globex',
+                            'Show me the full renewal timeline',
+                            'Which contracts allow a higher raise next year?',
+                          ].map(chip => (
+                            <button key={chip} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background 0.12s, border-color 0.12s' }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
+                            >
+                              <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </Stack>
+                    </div>
+                  )}
                 </Stack>
               </>
             )}
@@ -808,6 +1147,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               <Inline gap="xs">
                 <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                 <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
               </Inline>
             </Stack>
 
@@ -839,6 +1179,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
@@ -877,8 +1218,9 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                   <Inline gap="xs">
                     <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                     <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                    <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                   </Inline>
-                  {!worksheetMode ? (
+                  {!(worksheetMode || worksheetRequested) ? (
                     <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
                       <Inline gap="xs" align="center">
                         <IrisIcon />
@@ -888,8 +1230,8 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                         I can pull together all your Acme agreements into a single view — committed spend, seat counts, and the MFN language — so you have the full picture before renewal comes up.
                       </Text>
                       <Inline gap="small">
-                        <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('vendor-exposure-acme'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          Yes, let's do it
+                        <button onClick={() => { setWorksheetRequested(true); if (onBuildWorksheet) onBuildWorksheet('vendor-exposure-acme'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Yes, build it
                           <Icon name="arrow-right" size={13} color="#fff" />
                         </button>
                         <button style={{ background: 'none', border: 'none', fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', padding: '8px 4px' }}>
@@ -909,23 +1251,26 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                         </Text>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           {[
-                            { label: 'Add a column for notice period to terminate', icon: 'plus' as const },
-                            { label: 'Flag any auto-renewal clauses', icon: 'status-check' as const },
-                            { label: 'Add a column comparing per-seat rate to market', icon: 'chart-bar' as const },
-                            { label: 'Extract any volume discount thresholds', icon: 'document' as const },
-                          ].map(chip => (
+                            'Add a column for notice period to terminate',
+                            'Flag any auto-renewal clauses',
+                            'Add a column comparing per-seat rate to market',
+                            'Extract any volume discount thresholds',
+                          ].map(label => (
                             <button
-                              key={chip.label}
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 20, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                              key={label}
+                              style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
                             >
-                              <Icon name={chip.icon} size={13} color="var(--ink-purple-100, #4B47C8)" />
-                              {chip.label}
+                              <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+                              {label}
                             </button>
                           ))}
                         </div>
                         <Inline gap="xs" style={{ marginTop: 4 }}>
                           <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                           <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                          <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                         </Inline>
                       </Stack>
                     </div>
@@ -975,6 +1320,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               <Inline gap="xs">
                 <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                 <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
               </Inline>
             </Stack>
 
@@ -1025,6 +1371,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
@@ -1065,25 +1412,54 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                   <Inline gap="xs">
                     <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                     <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                    <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                   </Inline>
-                  <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
-                    <Inline gap="xs" align="center">
-                      <IrisIcon />
-                      <Text size="sm" style={{ fontWeight: 600 }}>Build an SLA Remedies Worksheet?</Text>
-                    </Inline>
-                    <Text size="sm" style={{ lineHeight: 1.6, color: 'var(--ink-text-secondary)' }}>
-                      A worksheet will pull uptime thresholds, credit schedules, claim deadlines, and license counts across your 4 software agreements into a single view.
-                    </Text>
-                    <Inline gap="small">
-                      <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('sla'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        Yes, build it
-                        <Icon name="arrow-right" size={13} color="#fff" />
-                      </button>
-                      <button style={{ background: 'none', border: 'none', fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', padding: '8px 4px' }}>
-                        No thanks
-                      </button>
-                    </Inline>
-                  </div>
+                  {!(worksheetMode || worksheetRequested) ? (
+                    <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                      <Inline gap="xs" align="center">
+                        <IrisIcon />
+                        <Text size="sm" style={{ fontWeight: 600 }}>Build an SLA Remedies Worksheet?</Text>
+                      </Inline>
+                      <Text size="sm" style={{ lineHeight: 1.6, color: 'var(--ink-text-secondary)' }}>
+                        A worksheet will pull uptime thresholds, credit schedules, claim deadlines, and license counts across your 4 software agreements into a single view.
+                      </Text>
+                      <Inline gap="small">
+                        <button onClick={() => { setWorksheetRequested(true); if (onBuildWorksheet) onBuildWorksheet('sla'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Yes, build it
+                          <Icon name="arrow-right" size={13} color="#fff" />
+                        </button>
+                        <button style={{ background: 'none', border: 'none', fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', padding: '8px 4px' }}>
+                          Not right now
+                        </button>
+                      </Inline>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
+                        <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                        <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>SLA Remedies Worksheet built — 4 agreements</Text>
+                      </div>
+                      <Stack gap="small">
+                        <Text size="sm" style={{ lineHeight: 1.65 }}>Your worksheet is ready. Here are some things you might want to explore next:</Text>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                          {[
+                            'Draft a credit claim for BioCore',
+                            'Which vendor has the weakest SLA?',
+                            'Set a reminder before BioCore\'s claim window closes',
+                            'What happens if Pinnacle breaches again?',
+                          ].map(chip => (
+                            <button key={chip} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background 0.12s, border-color 0.12s' }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
+                            >
+                              <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </Stack>
+                    </div>
+                  )}
                 </Stack>
               </>
             )}
@@ -1103,11 +1479,11 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {convStep >= 1 && (
               <Stack gap="small">
                 <Inline gap="xs" align="center">
-                  <Text size="xs" color="secondary">Scanning 23 Acme agreements</Text>
+                  <Text size="xs" color="secondary">Scanning 10 Acme agreements</Text>
                   <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
                 </Inline>
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Across 23 Acme agreements, I found <strong>3 product/service categories</strong> and <strong>3 pricing models</strong> in use.
+                  Across 10 Acme agreements, I found <strong>3 product/service categories</strong> and <strong>3 pricing models</strong> in use.
                 </Text>
                 <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
                   <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--ink-border-color-subtle)', background: 'var(--ink-neutral-fade-05, #f7f7f9)' }}>
@@ -1127,9 +1503,25 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                     </div>
                   ))}
                 </div>
+                {isPricingTermsPath && convStep >= 1 && (
+                  <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
+                    To surface all pricing and licensing terms accurately, I'll need to run a structured analysis across your 10 Acme agreements. Would you like me to do that?
+                  </Text>
+                )}
+                {isFlagEscalationPath && convStep >= 1 && (
+                  <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
+                    I can also check all 10 agreements for price escalation language — clauses that allow Acme to increase pricing at renewal. Want me to flag any I find?
+                  </Text>
+                )}
+                {isPricingTablePath && convStep >= 1 && (
+                  <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
+                    Want me to build a side-by-side comparison of pricing terms across all 10 agreements?
+                  </Text>
+                )}
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
@@ -1138,11 +1530,96 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {userMessages.length >= 2 && <IrisUserBubble text={userMessages[1]} />}
             {isThinking && convStep === 1 && <IrisThinkingBubble />}
 
-            {/* Step 2 response: pricing model breakdown table */}
-            {convStep >= 2 && (
+            {/* Step 2 response: path-dependent */}
+            {convStep >= 2 && (isPricingTermsPath || isPricingTablePath) && !(worksheetMode || worksheetRequested) && (
+              /* Pricing terms / pricing table path: skip breakdown, go straight to worksheet proposal */
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  {isPricingTermsPath
+                    ? <>I'll set that up now. I'll create a worksheet titled <strong>Acme Products & Pricing Breakdown</strong> that extracts each contract's service, pricing basis, unit price, and any special licensing terms. Here's what I'll pull:</>
+                    : <>I'll set that up now. I'll extract the key commercial terms from each of your 10 Acme agreements into a structured comparison worksheet. Here's what I'll pull:</>
+                  }
+                </Text>
+                <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '12px 14px' }}>
+                  <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 8 }}>What I'll extract</Text>
+                  {[
+                    { label: 'Agreement name', ai: false },
+                    { label: 'Effective date', ai: false },
+                    { label: 'End date', ai: false },
+                    { label: 'Total contract value', ai: false },
+                    { label: 'Service / Offering', ai: true },
+                    { label: 'Pricing basis', ai: true },
+                    { label: 'Unit price', ai: true },
+                    { label: 'Discounts & special terms', ai: true },
+                  ].map((col, i) => (
+                    <div key={col.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                      <Icon name="check" size={12} color={col.ai ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-secondary)'} />
+                      <Text size="xs" style={{ flex: 1 }}>{col.label}</Text>
+                      {col.ai && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)', background: 'var(--ink-purple-05, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', borderRadius: 100, padding: '1px 7px' }}>AI</span>}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => { setWorksheetRequested(true); onBuildWorksheet && onBuildWorksheet('deep-analysis'); if (isPricingTablePath) onClose(); }}
+                  style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#3d39b0'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'; }}
+                >
+                  <Icon name="table" size={14} color="#fff" />
+                  Build my worksheet
+                </button>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
+                </Inline>
+              </Stack>
+            )}
+            {convStep >= 2 && isFlagEscalationPath && (
+              /* Escalation path: show which agreements have escalation clauses */
               <Stack gap="small">
                 <Inline gap="xs" align="center">
-                  <Text size="xs" color="secondary">Extracting pricing terms from 23 agreements</Text>
+                  <Text size="xs" color="secondary">Scanning 10 agreements for price escalation clauses</Text>
+                  <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                </Inline>
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  Found <strong>1 of 10 agreements</strong> with a price escalation clause. The rest have fixed pricing or no escalation language.
+                </Text>
+                <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '7px 14px', background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderBottom: '1px solid var(--ink-border-color-subtle)', display: 'flex', gap: 16 }}>
+                    <Text size="xs" style={{ fontWeight: 600, flex: 1 }}>Agreement</Text>
+                    <Text size="xs" style={{ fontWeight: 600, width: 120 }}>Clause</Text>
+                    <Text size="xs" style={{ fontWeight: 600, width: 80 }}>Risk</Text>
+                  </div>
+                  {[
+                    { name: 'MSA - Acme Corp.pdf', clause: '3% annual cap (§8.2)', risk: 'Medium', riskColor: '#D97706' },
+                    { name: 'SOW - Acme Implementation.pdf', clause: 'None — fixed price', risk: 'Low', riskColor: 'var(--ink-text-secondary)' },
+                    { name: 'Order Form - Cloud Storage.pdf', clause: 'None — fixed price', risk: 'Low', riskColor: 'var(--ink-text-secondary)' },
+                  ].map((row, i) => (
+                    <div key={row.name} style={{ display: 'flex', padding: '9px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', gap: 16, alignItems: 'center' }}>
+                      <Text size="xs" style={{ flex: 1, fontWeight: 500 }}>{row.name}</Text>
+                      <Text size="xs" style={{ width: 120 }} color="secondary">{row.clause}</Text>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: row.riskColor, width: 80 }}>{row.risk}</span>
+                    </div>
+                  ))}
+                </div>
+                {convStep === 2 && (
+                  <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
+                    The MSA's §8.2 escalation kicks in at Year 2. Want me to build a tracker that flags this alongside your renewal dates so you can prepare before negotiation?
+                  </Text>
+                )}
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
+                </Inline>
+              </Stack>
+            )}
+            {convStep >= 2 && !isPricingTermsPath && !isFlagEscalationPath && !isPricingTablePath && (
+              /* Default path: pricing model breakdown table */
+              <Stack gap="small">
+                <Inline gap="xs" align="center">
+                  <Text size="xs" color="secondary">Extracting pricing terms from 10 agreements</Text>
                   <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
                 </Inline>
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
@@ -1172,19 +1649,60 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
 
-            {/* Step 3: user confirms worksheet */}
-            {userMessages.length >= 3 && <IrisUserBubble text={userMessages[2]} />}
-            {isThinking && convStep === 2 && <IrisThinkingBubble />}
+            {/* Step 3: user message (only shown on default path and escalation path) */}
+            {!isPricingTermsPath && !isPricingTablePath && userMessages.length >= 3 && <IrisUserBubble text={userMessages[2]} />}
+            {!isPricingTermsPath && !isPricingTablePath && isThinking && convStep === 2 && <IrisThinkingBubble />}
 
-            {/* Step 3 response: worksheet creation */}
-            {convStep >= 3 && !worksheetMode && (
+            {/* Step 3 response: escalation path → worksheet proposal */}
+            {convStep >= 3 && isFlagEscalationPath && !worksheetMode && !worksheetRequested && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  On it. I'll pull together a pricing breakdown across all <strong>23 Acme agreements</strong>. Here's what I'll include:
+                  I'll create a worksheet titled <strong>Acme Price Escalation Tracker</strong> that flags the MSA's §8.2 clause alongside your renewal dates — so you can review it before negotiation begins. Here's what I'll include:
+                </Text>
+                <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '12px 14px' }}>
+                  <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 8 }}>What I'll extract</Text>
+                  {[
+                    { label: 'Agreement name', ai: false },
+                    { label: 'Renewal / expiration date', ai: false },
+                    { label: 'Escalation clause (y/n)', ai: true },
+                    { label: 'Escalation cap %', ai: true },
+                    { label: 'Clause location (section)', ai: true },
+                    { label: 'Notes', ai: true },
+                  ].map((col, i) => (
+                    <div key={col.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                      <Icon name="check" size={12} color={col.ai ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-secondary)'} />
+                      <Text size="xs" style={{ flex: 1 }}>{col.label}</Text>
+                      {col.ai && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)', background: 'var(--ink-purple-05, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', borderRadius: 100, padding: '1px 7px' }}>AI</span>}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => { setWorksheetRequested(true); onBuildWorksheet && onBuildWorksheet('deep-analysis'); }}
+                  style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#3d39b0'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'; }}
+                >
+                  <Icon name="table" size={14} color="#fff" />
+                  Build my worksheet
+                </button>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
+                </Inline>
+              </Stack>
+            )}
+
+            {/* Step 3 response: default path → worksheet creation */}
+            {convStep >= 3 && !isFlagEscalationPath && !isPricingTermsPath && !isPricingTablePath && !worksheetMode && !worksheetRequested && (
+              <Stack gap="small">
+                <Text size="sm" style={{ lineHeight: 1.65 }}>
+                  I'm going to create a worksheet titled <strong>Acme Products & Pricing Breakdown</strong>, focused on mapping every product and service Acme provides across your 10 agreements — including what you're paying, how it's priced, and any special terms. Here's what I'll extract:
                 </Text>
                 <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '12px 14px' }}>
                   <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 8 }}>What I'll extract</Text>
@@ -1206,241 +1724,53 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                   ))}
                 </div>
                 <button
-                  onClick={() => onBuildWorksheet && onBuildWorksheet('deep-analysis')}
+                  onClick={() => { setWorksheetRequested(true); onBuildWorksheet && onBuildWorksheet('deep-analysis'); }}
                   style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#3d39b0'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'; }}
                 >
                   <Icon name="table" size={14} color="#fff" />
-                  Start analysis
+                  Build my worksheet
                 </button>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
-            {convStep >= 3 && worksheetMode && (
-              <Stack gap="small">
-                <Text size="sm" color="secondary" style={{ lineHeight: 1.65 }}>The analysis is ready. You can view it in the panel on the left.</Text>
-              </Stack>
-            )}
-          </div>
-          {irisInputArea}
-        </>
-      ) : isFinanceFlow ? (
-        /* ── Finance / ERP flow ── */
-        <>
-          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Step 0: user question */}
-            {userMessages.length >= 1 && <IrisUserBubble text={userMessages[0]} />}
-            {userMessages.length >= 1 && convStep === 0 && ((_isFinanceInit && !followUpReady) || (!_isFinanceInit && isThinking)) && <IrisThinkingBubble />}
-
-            {/* Step 1: Finance consent offer */}
-            {convStep >= 1 && (
-              <Stack gap="small">
-                <Inline gap="xs" align="center">
-                  <Text size="xs" color="secondary">Checked Finance integration for your workspace</Text>
-                  <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
-                </Inline>
-                <div style={{ height: 4 }} />
-                <Text size="sm" style={{ lineHeight: 1.7 }}>
-                  I can see the contract values and billing terms for these Acme agreements in Agreement Manager.
-                </Text>
-                <div style={{ height: 2 }} />
-                <Text size="sm" style={{ lineHeight: 1.7 }}>
-                  To show <strong>project and cost center</strong> and <strong>how much has actually been spent</strong> — including discounts and penalties — I need read-only access to your Finance system (SAP).
-                </Text>
-                <div style={{ height: 4 }} />
-                <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '14px 16px' }}>
-                  <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>I'll only retrieve:</Text>
-                  {['Project and cost center mappings', 'Actual spend vs contract value', 'Applied discounts and penalties'].map(item => (
-                    <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-                      <Icon name="check" size={13} color="var(--ink-green-80, #2f9e44)" />
-                      <Text size="sm" style={{ lineHeight: 1.5 }}>{item}</Text>
-                    </div>
-                  ))}
+            {convStep >= 2 && worksheetMode && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
+                  <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                  <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Worksheet created — Acme Products & Pricing Breakdown</Text>
                 </div>
-                <div style={{ height: 4 }} />
-                {!financeGranted && !financeModalOpen && (
-                  <Inline gap="small" align="center">
-                    <button
-                      onClick={() => setFinanceModalOpen(true)}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-                    >
-                      <Icon name="link" size={13} />
-                      Connect Finance
-                    </button>
-                    <button style={{ fontSize: 13, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0 }}>
-                      Continue with contract-only view
-                    </button>
-                  </Inline>
-                )}
-                {financeGranted && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>
-                    <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
-                    Finance connected
-                  </div>
-                )}
-
-                {/* Inline consent modal card */}
-                {financeModalOpen && (
-                  <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '20px', background: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', marginTop: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, paddingBottom: 16, borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Icon name="link" size={17} color="var(--ink-purple-100, #4B47C8)" />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3 }}>Connect Finance (read-only)</div>
-                        <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 2 }}>SAP Finance · Workspace integration</div>
-                      </div>
-                    </div>
-                    <Text size="sm" color="secondary" style={{ display: 'block', marginBottom: 10 }}>Iris will use your existing SAP Finance connection to read:</Text>
-                    <div style={{ marginBottom: 18 }}>
-                      {['Project and cost center for contracts you select', 'Actual spend vs contract value', 'Applied discounts and penalties'].map(item => (
-                        <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-                          <Icon name="check" size={13} color="var(--ink-green-80, #2f9e44)" />
-                          <Text size="sm" style={{ lineHeight: 1.5 }}>{item}</Text>
-                        </div>
-                      ))}
-                    </div>
-                    <Text size="xs" style={{ fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Iris will not:</Text>
-                    <div style={{ marginBottom: 20 }}>
-                      {['Create or modify records', 'Approve invoices or POs'].map(item => (
-                        <div key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-                          <Icon name="close" size={13} color="var(--ink-red-80, #c92a2a)" />
-                          <Text size="sm" color="secondary" style={{ lineHeight: 1.5 }}>{item}</Text>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        disabled={financeConnecting}
-                        onClick={() => {
-                          setFinanceConnecting(true);
-                          setTimeout(() => {
-                            setFinanceConnecting(false);
-                            setFinanceGranted(true);
-                            setFinanceModalOpen(false);
-                            setTimeout(() => {
-                              setIsThinking(true);
-                              setTimeout(() => { setIsThinking(false); setConvStep(2); }, 2200);
-                            }, 300);
-                          }, 2600);
-                        }}
-                        style={{ flex: 1, padding: '9px', fontSize: 13, fontWeight: 600, background: financeConnecting ? 'var(--ink-purple-60, #7B79D8)' : 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, cursor: financeConnecting ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 200ms' }}
+                <Stack gap="small">
+                  <Text size="sm" style={{ lineHeight: 1.65 }}>Your analysis is ready. You can view and edit it in the worksheet view.</Text>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {[
+                      'Which agreement has the highest unit cost?',
+                      'Flag agreements missing pricing details',
+                      'Show me agreements expiring in the next 90 days',
+                      'Add a column for auto-renewal notice deadlines',
+                    ].map(chip => (
+                      <button key={chip} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background 0.12s, border-color 0.12s' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
                       >
-                        {financeConnecting && (
-                          <span style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.35)', borderTopColor: '#fff', display: 'inline-block', animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
-                        )}
-                        {financeConnecting ? 'Connecting to SAP…' : 'Allow access'}
+                        <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+                        {chip}
                       </button>
-                      <button
-                        disabled={financeConnecting}
-                        onClick={() => setFinanceModalOpen(false)}
-                        style={{ padding: '9px 16px', fontSize: 13, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 6, cursor: financeConnecting ? 'default' : 'pointer', fontFamily: 'inherit', color: financeConnecting ? 'var(--ink-text-secondary)' : 'var(--ink-text-primary)', opacity: financeConnecting ? 0.5 : 1 }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                )}
-                <div style={{ height: 8 }} />
-                <Inline gap="xs">
-                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-                </Inline>
-              </Stack>
-            )}
-
-            {/* Thinking between consent and data load */}
-            {isThinking && convStep === 1 && <IrisThinkingBubble />}
-
-            {/* Step 2: Financial summary */}
-            {convStep >= 2 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>
-                  <Icon name="status-check" size={13} color="var(--ink-green-80, #2f9e44)" />
-                  Finance connected for this workspace
-                </div>
-                <div style={{ borderTop: '1px solid var(--ink-border-color-subtle)', paddingTop: 14 }}>
-                  <Text size="sm" style={{ lineHeight: 1.7, display: 'block', marginBottom: 6 }}>
-                    Thanks — I'm pulling project, cost center, and spend data for your <strong>10 Acme agreements</strong>.
-                  </Text>
-                  <Text size="sm" style={{ lineHeight: 1.7 }}>Here's a summary:</Text>
-                </div>
-
-                {/* Projects & cost centers */}
-                <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
-                  <div style={{ padding: '9px 16px', background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderBottom: '1px solid var(--ink-border-color-subtle)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--ink-text-secondary)' }}>
-                    Projects & cost centers
-                  </div>
-                  {[
-                    { project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', count: 6 },
-                    { project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', count: 4 },
-                  ].map((row, i) => (
-                    <div key={row.project} style={{ padding: '12px 16px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{row.project}</div>
-                      <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{row.costCenter} · {row.count} contracts</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Financials */}
-                <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
-                  <div style={{ padding: '9px 16px', background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderBottom: '1px solid var(--ink-border-color-subtle)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.06em', color: 'var(--ink-text-secondary)' }}>
-                    Financials vs contract value
-                  </div>
-                  {[
-                    { label: 'Total contracted value', value: '$8.4M' },
-                    { label: 'Actual spend to date', value: '$6.1M', sub: '73% of TCV' },
-                    { label: 'Remaining value', value: '$2.3M' },
-                  ].map((row, i) => (
-                    <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 16px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
-                      <div>
-                        <div style={{ fontSize: 13, color: 'var(--ink-text-primary)' }}>{row.label}</div>
-                        {'sub' in row && row.sub && <div style={{ fontSize: 11, color: 'var(--ink-text-secondary)', marginTop: 2 }}>{row.sub}</div>}
-                      </div>
-                      <span style={{ fontSize: 14, fontWeight: 600 }}>{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ borderTop: '1px solid var(--ink-border-color-subtle)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <Text size="sm" style={{ lineHeight: 1.7 }}>
-                    <strong>Discounts applied:</strong> $420K across 3 contracts. One contract has a <strong style={{ color: 'var(--ink-orange-80, #d9480f)' }}>$75K penalty credit</strong> due to SLA breaches.
-                  </Text>
-                  <Text size="sm" style={{ lineHeight: 1.7 }}>
-                    I can break this down per contract or create a worksheet with all these fields so you can sort and filter.
-                  </Text>
-                </div>
-
-                {!worksheetMode && (
-                  <button
-                    onClick={() => onBuildWorksheet && onBuildWorksheet('finance-erp')}
-                    style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-                  >
-                    <Icon name="table" size={14} />
-                    Open Worksheet
-                  </button>
-                )}
-                {worksheetMode && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
-                    <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
-                    <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Finance worksheet built — 10 agreements</Text>
-                  </div>
-                )}
-                <Inline gap="xs">
-                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-                </Inline>
+                </Stack>
               </div>
             )}
           </div>
           {irisInputArea}
         </>
       ) : isUpdatesFlow ? (
-        /* ── Simple Input / Updates flow — skip summary, start with the question ── */
+        /* ── Simple Input / Updates flow — chip or Start Chat entry ── */
         <>
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Inline gap="xs" align="center">
@@ -1448,262 +1778,426 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
             </Inline>
 
-            {followUp && <IrisUserBubble text={followUp} />}
-            {followUp && !followUpReady && <IrisThinkingBubble />}
+            {/* Start Chat path — prompt shown in scroll area, chips shown near input */}
+            {userMessages.length === 0 && (
+              <Text size="sm" style={{ color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>What would you like to know about Acme Corp?</Text>
+            )}
 
-            {followUp && followUpReady && (
-              <Stack gap="small">
-                {(followUp.toLowerCase().includes('summar') || followUp.toLowerCase().includes('relationship')) ? (
-                  <>
-                    <Inline gap="xs" align="center">
-                      <Text size="xs" color="secondary">Summarizing relationship across 4 agreements</Text>
-                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
-                    </Inline>
-                    <Text size="sm" style={{ lineHeight: 1.65 }}>
-                      Acme Corp has been an active vendor for <strong>3+ years</strong> with <strong>4 agreements on record</strong>. Total committed spend is <strong>$225K/yr</strong> across an enterprise MSA, implementation SOW, NDA, and DPA. 2 agreements are approaching expiry within 90 days.
-                    </Text>
-                    <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
-                      {[
-                        { name: 'MSA - Acme Corp.pdf', detail: 'Enterprise license · $180K/yr', status: 'Active', color: 'var(--ink-text-secondary)' },
-                        { name: 'SOW - Acme Implementation.pdf', detail: 'Fixed-price · $45K', status: 'Expiring Aug 2026', color: '#D97706' },
-                        { name: 'NDA - Acme Corp.pdf', detail: 'No monetary value', status: 'Expiring Aug 2026', color: '#D97706' },
-                        { name: 'DPA - Acme Corp.pdf', detail: 'No expiry', status: 'Active', color: 'var(--ink-text-secondary)' },
-                      ].map((r, i) => (
-                        <div key={r.name} style={{ padding: '9px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div>
-                            <Text size="xs" style={{ fontWeight: 500 }}>{r.name}</Text>
-                            <Text size="xs" color="secondary" style={{ display: 'block' }}>{r.detail}</Text>
-                          </div>
-                          <span style={{ fontSize: 11, fontWeight: 500, color: r.color }}>{r.status}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : followUp.toLowerCase().includes('expir') ? (
-                  <>
-                    <Inline gap="xs" align="center">
-                      <Text size="xs" color="secondary">Checking expiration dates across agreements</Text>
-                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
-                    </Inline>
-                    <Text size="sm" style={{ lineHeight: 1.65 }}>
-                      2 Acme agreements expire within the next 90 days. The SOW has a <strong>60-day notice period</strong> for non-renewal; the NDA auto-expires with no renewal clause.
-                    </Text>
-                    <div style={{ borderRadius: 8, border: '1px solid var(--ink-border-color-subtle)', overflow: 'hidden' }}>
-                      {[
-                        { name: 'SOW - Acme Implementation.pdf', expires: 'Aug 18, 2026', notice: '60-day notice required', daysLeft: '63 days' },
-                        { name: 'NDA - Acme Corp.pdf', expires: 'Aug 22, 2026', notice: 'Auto-expires, no renewal', daysLeft: '67 days' },
-                      ].map((r, i) => (
-                        <div key={r.name} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', background: '#fff' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                            <Text size="sm" style={{ fontWeight: 500 }}>{r.name}</Text>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-orange-80, #e67700)' }}>{r.daysLeft}</span>
-                          </div>
-                          <Text size="xs" color="secondary">{r.expires} · {r.notice}</Text>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : followUp.toLowerCase().includes('pric') ? (
-                  <>
-                    <Inline gap="xs" align="center">
-                      <Text size="xs" color="secondary">Extracting pricing terms from 2 agreements</Text>
-                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
-                    </Inline>
-                    <Text size="sm" style={{ lineHeight: 1.65 }}>
-                      Acme's active agreements carry a combined <strong>$225K/yr</strong> in committed spend. The MSA includes a <strong>3% annual price escalation clause</strong> (§8.2) starting Year 2. The SOW is fixed-price with no escalation.
-                    </Text>
-                    <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
-                      {[
-                        { agreement: 'MSA - Acme Corp.pdf', structure: 'Annual license', amount: '$180K/yr', escalation: '3% per year (§8.2)' },
-                        { agreement: 'SOW - Acme Implementation.pdf', structure: 'Fixed-price', amount: '$45K', escalation: 'None' },
-                      ].map((r, i) => (
-                        <div key={r.agreement} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                            <Text size="xs" style={{ fontWeight: 500 }}>{r.agreement}</Text>
-                            <Text size="xs" style={{ fontWeight: 600 }}>{r.amount}</Text>
-                          </div>
-                          <div style={{ display: 'flex', gap: 16 }}>
-                            <Text size="xs" color="secondary">Structure: {r.structure}</Text>
-                            <Text size="xs" color="secondary">Escalation: <span style={{ color: r.escalation !== 'None' ? '#D97706' : 'inherit' }}>{r.escalation}</span></Text>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Inline gap="xs" align="center">
-                      <Text size="xs" color="secondary">Reading MSA renewal terms</Text>
-                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
-                    </Inline>
-                    <Text size="sm" style={{ lineHeight: 1.65 }}>
-                      The Acme MSA (§12.1) auto-renews for successive 1-year terms on <strong>April 26, 2027</strong>, unless either party provides written notice of non-renewal at least <strong>60 days prior</strong> (by February 25, 2027).
-                    </Text>
-                    <div style={{ background: '#fafafa', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, borderLeft: '3px solid var(--ink-purple-100, #4B47C8)', padding: '14px 16px' }}>
-                      <Inline gap="xs" align="center" style={{ marginBottom: 10 }}>
-                        <Icon name="document" size={13} color="var(--ink-text-secondary)" />
-                        <Text size="xs" color="secondary" style={{ fontStyle: 'italic' }}>MSA - Acme Corp.pdf · §12.1 Term and Renewal</Text>
+            {userMessages.length >= 1 && <IrisUserBubble text={userMessages[0]} />}
+            {userMessages.length >= 1 && convStep === 0 && ((_isUpdatesInit && !followUpReady) || (!_isUpdatesInit && isThinking)) && <IrisThinkingBubble />}
+
+            {userMessages.length >= 1 && convStep >= 1 && !isThinking && (() => {
+              const aq = userMessages[0].toLowerCase();
+              return (
+                <Stack gap="small">
+                  {(aq.includes('summar') || aq.includes('relationship')) ? (
+                    <>
+                      <Inline gap="xs" align="center">
+                        <Text size="xs" color="secondary">Summarizing relationship across 4 agreements</Text>
+                        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
                       </Inline>
-                      <p style={{ margin: 0, fontSize: 12.5, fontStyle: 'italic', lineHeight: 1.75, color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}>
-                        "…This Agreement shall automatically renew for successive one (1) year terms unless either party provides written notice of non-renewal no less than <strong style={{ fontStyle: 'normal' }}>sixty (60) days</strong> prior to the end of the then-current term…"
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {[
-                        { label: 'Current term ends', value: 'April 26, 2027' },
-                        { label: 'Non-renewal notice deadline', value: 'February 25, 2027' },
-                        { label: 'Auto-renewal clause', value: 'Yes — 1-year successive terms' },
-                      ].map((row, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
-                          <Text size="xs" color="secondary">{row.label}</Text>
-                          <Text size="xs" style={{ fontWeight: 600 }}>{row.value}</Text>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-                <Inline gap="xs">
-                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-                </Inline>
-              </Stack>
-            )}
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>
+                        Acme Corp has been an active vendor for <strong>3+ years</strong> with <strong>4 agreements on record</strong>. Total committed spend is <strong>$225K/yr</strong> across an enterprise MSA, implementation SOW, NDA, and DPA. 2 agreements are approaching expiry within 90 days.
+                      </Text>
+                      <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                        {[
+                          { name: 'MSA - Acme Corp.pdf', detail: 'Enterprise license · $180K/yr', status: 'Active', color: 'var(--ink-text-secondary)' },
+                          { name: 'SOW - Acme Implementation.pdf', detail: 'Fixed-price · $45K', status: 'Expiring Aug 2026', color: '#D97706' },
+                          { name: 'NDA - Acme Corp.pdf', detail: 'No monetary value', status: 'Expiring Aug 2026', color: '#D97706' },
+                          { name: 'DPA - Acme Corp.pdf', detail: 'No expiry', status: 'Active', color: 'var(--ink-text-secondary)' },
+                        ].map((r, i) => (
+                          <div key={r.name} style={{ padding: '9px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <Text size="xs" style={{ fontWeight: 500 }}>{r.name}</Text>
+                              <Text size="xs" color="secondary" style={{ display: 'block' }}>{r.detail}</Text>
+                            </div>
+                            <span style={{ fontSize: 11, fontWeight: 500, color: r.color }}>{r.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : aq.includes('expir') ? (
+                    <>
+                      <Inline gap="xs" align="center">
+                        <Text size="xs" color="secondary">Checking expiration dates across agreements</Text>
+                        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                      </Inline>
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>
+                        2 Acme agreements expire within the next 90 days. The SOW has a <strong>60-day notice period</strong> for non-renewal; the NDA auto-expires with no renewal clause.
+                      </Text>
+                      <div style={{ borderRadius: 8, border: '1px solid var(--ink-border-color-subtle)', overflow: 'hidden' }}>
+                        {[
+                          { name: 'SOW - Acme Implementation.pdf', expires: 'Aug 18, 2026', notice: '60-day notice required', daysLeft: '63 days' },
+                          { name: 'NDA - Acme Corp.pdf', expires: 'Aug 22, 2026', notice: 'Auto-expires, no renewal', daysLeft: '67 days' },
+                        ].map((r, i) => (
+                          <div key={r.name} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', background: '#fff' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                              <Text size="sm" style={{ fontWeight: 500 }}>{r.name}</Text>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-orange-80, #e67700)' }}>{r.daysLeft}</span>
+                            </div>
+                            <Text size="xs" color="secondary">{r.expires} · {r.notice}</Text>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : aq.includes('pric') ? (
+                    <>
+                      <Inline gap="xs" align="center">
+                        <Text size="xs" color="secondary">Extracting pricing terms from 2 agreements</Text>
+                        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                      </Inline>
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>
+                        Acme's active agreements carry a combined <strong>$225K/yr</strong> in committed spend. The MSA includes a <strong>3% annual price escalation clause</strong> (§8.2) starting Year 2. The SOW is fixed-price with no escalation.
+                      </Text>
+                      <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                        {[
+                          { agreement: 'MSA - Acme Corp.pdf', structure: 'Annual license', amount: '$180K/yr', escalation: '3% per year (§8.2)' },
+                          { agreement: 'SOW - Acme Implementation.pdf', structure: 'Fixed-price', amount: '$45K', escalation: 'None' },
+                        ].map((r, i) => (
+                          <div key={r.agreement} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                              <Text size="xs" style={{ fontWeight: 500 }}>{r.agreement}</Text>
+                              <Text size="xs" style={{ fontWeight: 600 }}>{r.amount}</Text>
+                            </div>
+                            <div style={{ display: 'flex', gap: 16 }}>
+                              <Text size="xs" color="secondary">Structure: {r.structure}</Text>
+                              <Text size="xs" color="secondary">Escalation: <span style={{ color: r.escalation !== 'None' ? '#D97706' : 'inherit' }}>{r.escalation}</span></Text>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Inline gap="xs" align="center">
+                        <Text size="xs" color="secondary">Reading MSA renewal terms</Text>
+                        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                      </Inline>
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>
+                        The Acme MSA (§12.1) auto-renews for successive 1-year terms on <strong>April 26, 2027</strong>, unless either party provides written notice of non-renewal at least <strong>60 days prior</strong> (by February 25, 2027).
+                      </Text>
+                      <div style={{ background: '#fafafa', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, borderLeft: '3px solid var(--ink-purple-100, #4B47C8)', padding: '14px 16px' }}>
+                        <Inline gap="xs" align="center" style={{ marginBottom: 10 }}>
+                          <Icon name="document" size={13} color="var(--ink-text-secondary)" />
+                          <Text size="xs" color="secondary" style={{ fontStyle: 'italic' }}>MSA - Acme Corp.pdf · §12.1 Term and Renewal</Text>
+                        </Inline>
+                        <p style={{ margin: 0, fontSize: 12.5, fontStyle: 'italic', lineHeight: 1.75, color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}>
+                          "…This Agreement shall automatically renew for successive one (1) year terms unless either party provides written notice of non-renewal no less than <strong style={{ fontStyle: 'normal' }}>sixty (60) days</strong> prior to the end of the then-current term…"
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {[
+                          { label: 'Current term ends', value: 'April 26, 2027' },
+                          { label: 'Non-renewal notice deadline', value: 'February 25, 2027' },
+                          { label: 'Auto-renewal clause', value: 'Yes — 1-year successive terms' },
+                        ].map((row, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                            <Text size="xs" color="secondary">{row.label}</Text>
+                            <Text size="xs" style={{ fontWeight: 600 }}>{row.value}</Text>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  <Inline gap="xs">
+                    <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                    <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                    <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
+                  </Inline>
+                </Stack>
+              );
+            })()}
 
-            {isThinking && followUpReady && <IrisThinkingBubble />}
-            {convStep >= 1 && !isThinking && (
-              <Stack gap="small">
-                <Text size="sm" style={{ lineHeight: 1.65, color: 'var(--ink-text-secondary)' }}>
-                  Is there anything else you'd like to know about this party relationship?
-                </Text>
-              </Stack>
-            )}
+            {isThinking && convStep >= 1 && <IrisThinkingBubble />}
           </div>
           {irisInputArea}
         </>
-      ) : isAutoRenewFlow ? (
-        /* ── Auto-Renew Risk flow ── */
+      ) : isSpendFlow ? (
         <>
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <IrisUserBubble text={question} />
+            <Inline gap="xs" align="center">
+              <Text size="xs" color="secondary">Read 47 agreements</Text>
+              <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+            </Inline>
 
-            {/* Thinking before step 0 */}
-            {!cameFromAnswerBlock && !initialReady && <IrisThinkingBubble />}
+            {userMessages.length >= 1 && <IrisUserBubble text={userMessages[0]} />}
+            {userMessages.length >= 1 && convStep === 0 && ((_isSpendInit && !followUpReady) || (!_isSpendInit && isThinking)) && <IrisThinkingBubble />}
 
-            {/* Step 0 response */}
-            {(cameFromAnswerBlock || initialReady) && (
+            {/* Report path */}
+            {isReportPath && convStep >= 1 && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  I've identified <strong>8 contracts</strong> with auto-renewal clauses active within the next 45 days — and <strong>3 of them</strong> have price escalation tied to renewal.
+                  Let's configure your report. Two quick questions.
                 </Text>
-                <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Want me to score them by risk level?
-                </Text>
-                <Inline gap="xs">
-                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-                </Inline>
+                <MultiStepDisambiguationCard
+                  steps={[
+                    { question: "What do you want to measure?", options: ['Contract value', 'Number of contracts', 'Average deal size'] },
+                    { question: "How do you want to group it?", options: ['By vendor category', 'By department', 'By agreement type'] },
+                  ]}
+                  onComplete={(answers) => {
+                    setUserMessages(prev => [...prev, answers[0], answers[1]]);
+                    setIsThinking(true);
+                    setTimeout(() => { setIsThinking(false); setConvStep(3); }, 1200);
+                  }}
+                />
               </Stack>
             )}
-
-            {userMessages.length > 0 && (cameFromAnswerBlock || initialReady) && <IrisUserBubble text={userMessages[0]} />}
-            {cameFromAnswerBlock && !initialReady && <IrisThinkingBubble />}
-            {!cameFromAnswerBlock && initialReady && isThinking && convStep === 0 && <IrisThinkingBubble />}
-
-            {initialReady && convStep >= 1 && (
+            {isReportPath && convStep >= 3 && !isThinking && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  I've scored the 8 contracts across three risk factors: <strong>notice period urgency</strong>, <strong>price escalation exposure</strong>, and <strong>no internal owner assigned</strong>. Here's what I'm seeing:
+                  Got it. Your report is configured — <strong>{userMessages[1]}</strong> grouped <strong>{(userMessages[2] || '').toLowerCase()}</strong>.
                 </Text>
-                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[
-                    { color: '#DC2626', label: 'High risk', detail: '3 contracts — Salesforce, Workday, Slack' },
-                    { color: '#D97706', label: 'Medium risk', detail: '3 contracts — Zendesk, Adobe, Box' },
-                    { color: '#16A34A', label: 'Low risk', detail: '2 contracts with fixed terms' },
-                  ].map((row, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: i > 0 ? '6px 0 0' : '0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: row.color, flexShrink: 0 }} />
-                      <Text size="sm" style={{ fontWeight: 600 }}>{row.label}</Text>
-                      <Text size="sm" color="secondary">— {row.detail}</Text>
-                    </div>
-                  ))}
-                </div>
-                <Text size="sm" style={{ lineHeight: 1.65 }}>Shall I build a prioritized action list?</Text>
-                <Inline gap="xs">
-                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-                </Inline>
-              </Stack>
-            )}
-
-            {initialReady && userMessages.length > 1 && <IrisUserBubble text={userMessages[1]} />}
-            {initialReady && isThinking && convStep === 1 && <IrisThinkingBubble />}
-
-            {initialReady && convStep >= 2 && (
-              <Stack gap="small">
-                <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Great. I'll structure this as a <strong>Risk-Prioritized Renewal Tracker</strong>. To give you the best view, I suggest these columns:
-                </Text>
-                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {[
-                    { label: 'Vendor', desc: 'Contracting party' },
-                    { label: 'Risk Score', desc: 'High / Medium / Low based on 3 factors' },
-                    { label: 'Days Until Auto-Renewal', desc: 'Days remaining before clause activates' },
-                    { label: 'Recommended Action', desc: 'Suggested next step' },
-                    { label: 'Assigned Owner', desc: 'Internal owner for follow-up' },
-                  ].map((col, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--ink-text-secondary)', marginTop: 6, flexShrink: 0 }} />
-                      <div>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', lineHeight: 1.4, display: 'block' }}>{col.label}</span>
-                        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', lineHeight: 1.4 }}>{col.desc}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <Text size="sm" style={{ lineHeight: 1.65 }}>Want to add any columns before I generate?</Text>
-                <Inline gap="xs">
-                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-                </Inline>
-              </Stack>
-            )}
-
-            {initialReady && userMessages.length > 2 && <IrisUserBubble text={userMessages[2]} />}
-            {initialReady && isThinking && convStep === 2 && <IrisThinkingBubble />}
-
-            {initialReady && convStep >= 3 && !worksheetMode && (
-              <Stack gap="small">
-                <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Added. Your tracker will include <strong>Contract Value</strong> to help prioritize negotiation effort.
-                </Text>
-                <Text size="sm" style={{ lineHeight: 1.65 }}>Ready to generate your Risk-Prioritized Renewal Tracker?</Text>
-                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {['Vendor', 'Risk Score', 'Days Until Auto-Renewal', 'Recommended Action', 'Assigned Owner', 'Contract Value'].map((col, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: i > 0 ? '4px 0 0' : '0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
-                      <Icon name="status-check" size={12} color="var(--ink-green-80, #2f9e44)" />
-                      <Text size="sm">{col}</Text>
-                    </div>
-                  ))}
-                </div>
-                <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('auto-renew-risk'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
-                  Generate Tracker
-                  <Icon name="arrow-right" size={13} color="#fff" />
+                <button
+                  onClick={() => onBuildReport && onBuildReport(userMessages[1], userMessages[2])}
+                  style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '10px 20px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  <Icon name="chart-bar" size={14} />
+                  Build my report
                 </button>
+                <Inline gap="xs">
+                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
+                </Inline>
               </Stack>
             )}
 
-            {initialReady && convStep >= 3 && worksheetMode && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
-                  <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
-                  <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Risk Tracker built — 8 contracts</Text>
-                </div>
-                <Text size="sm" style={{ lineHeight: 1.65 }}>Your 3 high-risk contracts need attention this week. Salesforce's notice period expires in <strong>12 days</strong> — want me to draft a negotiation brief?</Text>
-              </div>
-            )}
+            {/* Q&A path */}
+            {!isReportPath && convStep >= 1 && !isThinking && (() => {
+              const aq = (userMessages[0] || '').toLowerCase();
+              return (
+                <Stack gap="small">
+                  {aq.includes('top vendor') ? (
+                    <>
+                      <Inline gap="xs" align="center">
+                        <Text size="xs" color="secondary">Ranking vendors by committed spend</Text>
+                        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                      </Inline>
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>
+                        Your top 5 vendors by annual committed spend:
+                      </Text>
+                      <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                        {[
+                          { vendor: 'Acme Corp', category: 'Software', spend: '$2.1M/yr' },
+                          { vendor: 'Globex Systems', category: 'Infrastructure', spend: '$890K/yr' },
+                          { vendor: 'BioCore Innovations', category: 'Prof. Services', spend: '$620K/yr' },
+                          { vendor: 'Initech Ltd', category: 'Software', spend: '$410K/yr' },
+                          { vendor: 'Beacon Law Group', category: 'Legal Services', spend: '$180K/yr' },
+                        ].map((r, i) => (
+                          <div key={r.vendor} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                            <div>
+                              <Text size="sm" style={{ fontWeight: 500 }}>{r.vendor}</Text>
+                              <Text size="xs" color="secondary">{r.category}</Text>
+                            </div>
+                            <Text size="sm" style={{ fontWeight: 600 }}>{r.spend}</Text>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 10, padding: '14px 16px', background: 'var(--ink-bg-color-subtle, #f8f8fb)' }}>
+                        <Inline gap="small" align="center" style={{ marginBottom: 8 }}>
+                          <Icon name="chart-bar" size={16} color="var(--ink-cobalt-100, #1E4FD8)" />
+                          <Text size="sm" style={{ fontWeight: 600 }}>Visualize this data</Text>
+                        </Inline>
+                        <Text size="xs" color="secondary" style={{ marginBottom: 12, display: 'block' }}>
+                          Would you like to build a report or chart from this vendor spend breakdown?
+                        </Text>
+                        <button onClick={() => onBuildReport && onBuildReport('committed spend', 'vendor category')} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#3d39b0'; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'; }}>
+                          <Icon name="chart-bar" size={14} color="#fff" />
+                          Build a report
+                        </button>
+                      </div>
+                    </>
+                  ) : aq.includes('expir') ? (
+                    <>
+                      <Inline gap="xs" align="center">
+                        <Text size="xs" color="secondary">Scanning 47 agreements for upcoming expirations</Text>
+                        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                      </Inline>
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>
+                        <strong>4 contracts</strong> expire within 90 days, representing <strong>$3.6M/yr</strong> in committed spend that will need renewal decisions.
+                      </Text>
+                      <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                        {[
+                          { name: 'MSA - Initech Ltd.pdf', value: '$410K/yr', expires: 'Aug 12, 2026' },
+                          { name: 'SaaS - CloudOps Platform.pdf', value: '$380K/yr', expires: 'Aug 29, 2026' },
+                          { name: 'SOW - Globex Data Center.pdf', value: '$580K', expires: 'Sep 4, 2026' },
+                          { name: 'MSA - BioCore Innovations.pdf', value: '$620K/yr', expires: 'Sep 18, 2026' },
+                        ].map((r, i) => (
+                          <div key={r.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                            <Text size="xs" style={{ fontWeight: 500, flex: 1 }}>{r.name}</Text>
+                            <Text size="xs" style={{ fontWeight: 600, marginLeft: 12 }}>{r.value}</Text>
+                            <span style={{ fontSize: 11, marginLeft: 12, color: '#D97706', fontWeight: 500 }}>Exp. {r.expires}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Inline gap="xs" align="center">
+                        <Text size="xs" color="secondary">Analyzing spend across 47 agreements</Text>
+                        <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                      </Inline>
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>
+                        Total committed spend is <strong>$4.2M/yr</strong> across 47 agreements. Software accounts for 50%, professional services 33%, and infrastructure 17%.
+                      </Text>
+                    </>
+                  )}
+                  <Inline gap="xs">
+                    <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                    <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                    <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
+                  </Inline>
+                </Stack>
+              );
+            })()}
+
+            {isThinking && convStep >= 1 && <IrisThinkingBubble />}
           </div>
           {irisInputArea}
         </>
+      ) : isRenewalContractFlow ? (
+        /* ── Contract Renewal 3-step disambiguation flow ── */
+        (() => {
+          const q2Map: Record<string, { question: string; options: string[] }> = {
+            'Negotiate better pricing': {
+              question: "What's driving the conversation?",
+              options: ['Renewal is approaching and we want leverage', 'We received a price increase notice', 'Our usage has grown significantly', 'We want to benchmark against market rates'],
+            },
+            'Review SLA performance': {
+              question: 'Which area concerns you most?',
+              options: ['Missed delivery or uptime commitments', 'Support response times are too slow', 'Service quality has declined', 'Proactive review before renewal'],
+            },
+            'Check auto-renewal deadlines': {
+              question: 'How much runway do we have?',
+              options: ['Less than 30 days to deadline', '30–90 days out', 'More than 90 days — planning ahead', 'Not sure — need to check contracts'],
+            },
+            'Explore alternative suppliers': {
+              question: "What's the primary driver?",
+              options: ['Pricing is not competitive', 'Performance has been disappointing', 'We need different capabilities', 'Strategic vendor consolidation'],
+            },
+          };
+          const q3Map: Record<string, { question: string; options: string[] }> = {
+            'Negotiate better pricing': {
+              question: 'What outcome are you optimizing for?',
+              options: ['Lock in current pricing for another term', 'Reduce total spend by 15%+', 'Add performance guarantees to the contract', 'Keep options open — no commitment yet'],
+            },
+            'Review SLA performance': {
+              question: 'What action are you considering?',
+              options: ['Formal escalation to the vendor', 'Contract amendment with remedies', 'Early termination review', 'Performance improvement plan'],
+            },
+            'Check auto-renewal deadlines': {
+              question: 'What do you want to do before the deadline?',
+              options: ['Send a non-renewal notice', 'Start renegotiation before it locks in', 'Get executive sign-off on renewal', 'Just track it — no action yet'],
+            },
+            'Explore alternative suppliers': {
+              question: "What's your timeline?",
+              options: ['Actively evaluating now', 'Planning for next renewal cycle', 'Soft exploration — no urgency', 'Need to move fast'],
+            },
+          };
+
+          const q1Answer = userMessages[0] || '';
+          const q2Answer = userMessages[1] || '';
+          const q3Answer = userMessages[2] || '';
+          const q2 = q2Map[q1Answer] || q2Map['Negotiate better pricing'];
+          const q3 = q3Map[q1Answer] || q3Map['Negotiate better pricing'];
+
+          return (
+            <>
+              <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                {/* Q1 answer bubble */}
+                {userMessages.length >= 1 && <IrisUserBubble text={userMessages[0]} />}
+                {/* Thinking before Q2 */}
+                {userMessages.length >= 1 && convStep === 0 && ((_isRenewalContractInit && !followUpReady) || (!_isRenewalContractInit && isThinking)) && <IrisThinkingBubble />}
+
+                {/* Q2+Q3 multi-step disambiguation card */}
+                {convStep >= 1 && userMessages.length < 3 && (
+                  <Stack gap="small">
+                    <Inline gap="xs" align="center">
+                      <Text size="xs" color="secondary">Narrowing focus</Text>
+                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                    </Inline>
+                    <MultiStepDisambiguationCard
+                      steps={[q2, q3]}
+                      onComplete={(answers) => {
+                        setUserMessages(prev => [...prev, answers[0], answers[1]]);
+                        setIsThinking(true);
+                        setTimeout(() => { setIsThinking(false); setConvStep(3); }, 1000);
+                      }}
+                    />
+                  </Stack>
+                )}
+
+                {/* Thinking before final analysis */}
+                {userMessages.length >= 3 && isThinking && <IrisThinkingBubble />}
+
+                {/* Final analysis */}
+                {convStep >= 3 && (
+                  <Stack gap="small">
+                    <Inline gap="xs" align="center">
+                      <Text size="xs" color="secondary">Scanning 10 Acme agreements</Text>
+                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                    </Inline>
+                    {q1Answer === 'Negotiate better pricing' ? (
+                      <>
+                        <Text size="sm" style={{ lineHeight: 1.65 }}>
+                          Based on your goal to <strong>{q3Answer.toLowerCase()}</strong>, here are the 4 strongest leverage points before the Acme MSA renewal in April 2027:
+                        </Text>
+                        <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                          {[
+                            { point: '3% annual escalation clause active (§8.2)', detail: 'Year 2 escalation kicks in at renewal — worth challenging given flat usage growth', tag: 'High leverage' },
+                            { point: 'No volume discount threshold met', detail: 'Usage at 8.2TB — well below the 10TB tier discount. Commit to 10TB to trigger lower rate', tag: 'Pricing gap' },
+                            { point: 'SOW expiring Aug 2026 — 8 months early', detail: 'Early SOW exit creates natural renegotiation window before MSA renewal', tag: 'Timing' },
+                            { point: 'Competing quotes available from 2 alternatives', detail: 'Market rates for comparable services run 12–18% below current MSA terms', tag: 'Benchmark' },
+                          ].map((row, i) => (
+                            <div key={i} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3 }}>
+                                <Text size="xs" style={{ fontWeight: 500, flex: 1, paddingRight: 8 }}>{row.point}</Text>
+                                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)', background: 'var(--ink-purple-05, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap' as const, flexShrink: 0 }}>{row.tag}</span>
+                              </div>
+                              <Text size="xs" color="secondary" style={{ lineHeight: 1.5 }}>{row.detail}</Text>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : q1Answer === 'Check auto-renewal deadlines' ? (
+                      <>
+                        <Text size="sm" style={{ lineHeight: 1.65 }}>
+                          Here are the active auto-renewal deadlines across your 10 Acme agreements. Based on your goal to <strong>{q3Answer.toLowerCase()}</strong>:
+                        </Text>
+                        <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+                          {[
+                            { name: 'MSA - Acme Corp.pdf', deadline: 'Feb 25, 2027', window: '60-day notice', status: 'On track' },
+                            { name: 'SOW - Acme Implementation.pdf', deadline: 'Jun 18, 2026', window: '30-day notice', status: 'Urgent' },
+                            { name: 'NDA - Acme Corp.pdf', deadline: 'Jul 22, 2026', window: 'Auto-expires', status: 'Monitor' },
+                          ].map((row, i) => (
+                            <div key={i} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <Text size="xs" style={{ fontWeight: 500 }}>{row.name}</Text>
+                                <Text size="xs" color="secondary" style={{ display: 'block' }}>{row.deadline} · {row.window}</Text>
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: row.status === 'Urgent' ? '#D97706' : row.status === 'Monitor' ? 'var(--ink-text-secondary)' : 'var(--ink-green-80, #2f9e44)' }}>{row.status}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <Text size="sm" style={{ lineHeight: 1.65 }}>
+                        Based on your focus on <strong>{q1Answer.toLowerCase()}</strong> and goal to <strong>{q3Answer.toLowerCase()}</strong>, I've identified the key areas across your 10 Acme agreements. I can pull together a detailed breakdown — want me to build a summary table?
+                      </Text>
+                    )}
+                    <Inline gap="xs">
+                      <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
+                      <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                      <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
+                    </Inline>
+                  </Stack>
+                )}
+              </div>
+              {irisInputArea}
+            </>
+          );
+        })()
       ) : isRenewalScanFlow ? (
         /* ── Renewal scan: multi-step planning flow ── */
         <>
@@ -1717,11 +2211,12 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
             {(cameFromAnswerBlock || initialReady) && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  I've found <strong>42 agreements</strong> hitting their expiration dates soon. What else would you like to understand about these agreements?
+                  I've found <strong>9 agreements</strong> hitting their expiration dates soon. What else would you like to understand about these agreements?
                 </Text>
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
@@ -1744,6 +2239,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
@@ -1776,12 +2272,13 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                 <Inline gap="xs">
                   <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
                   <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+                  <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
                 </Inline>
               </Stack>
             )}
             {initialReady && userMessages.length > 2 && <IrisUserBubble text={userMessages[2]} />}
             {initialReady && isThinking && convStep === 2 && <IrisThinkingBubble />}
-            {initialReady && convStep >= 3 && !worksheetMode && (
+            {initialReady && convStep >= 3 && !worksheetMode && !worksheetRequested && (
               <Stack gap="small">
                 <Text size="sm" style={{ lineHeight: 1.65 }}>
                   Good call. I've added <strong>Primary Owner</strong> to the plan. I'm ready to generate this <strong>comparison table</strong>.
@@ -1797,126 +2294,87 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
                     </div>
                   ))}
                 </div>
-                <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 100, padding: '8px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
-                  Generate Table
-                  <Icon name="arrow-right" size={13} color="#fff" />
+                <button onClick={() => { setWorksheetRequested(true); if (onBuildWorksheet) onBuildWorksheet('renewal-scan'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: 'fit-content' }}>
+                  <Icon name="table" size={14} color="#fff" />
+                  Start analysis
                 </button>
               </Stack>
             )}
-            {initialReady && convStep >= 3 && worksheetMode && (
+            {initialReady && convStep >= 3 && (worksheetMode || worksheetRequested) && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
                   <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
-                  <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Comparison table built — 42 agreements</Text>
+                  <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Comparison table built — 9 agreements</Text>
                 </div>
                 <Stack gap="small">
-                  <Text size="sm" style={{ lineHeight: 1.65 }}>Your table is ready. Is there a specific vendor or deadline you'd like to focus on first?</Text>
+                  <Text size="sm" style={{ lineHeight: 1.65 }}>Your table is ready. Here are some things you might want to explore next:</Text>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {[
+                      'Which vendor has the earliest notice deadline?',
+                      'Show me contracts with auto-renewal clauses',
+                      'Flag agreements expiring before notice period runs out',
+                      'Which vendor has the lowest price cap?',
+                    ].map(chip => (
+                      <button key={chip} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background 0.12s, border-color 0.12s' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
+                      >
+                        <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
                 </Stack>
               </div>
             )}
           </div>
           {irisInputArea}
         </>
-      ) : isTerminationFlow ? (
-        /* ── Acme contract terms triage flow ── */
+      ) : isWsCompleteFlow ? (
+        /* ── Worksheet-from-modal complete flow ── */
         <>
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {userMessages.length > 0 && <IrisUserBubble text={userMessages[0]} />}
-            {!followUpReady && <IrisThinkingBubble />}
-
-            {/* Step 1: initial summary after triage selection arrives */}
-            {followUpReady && convStep >= 1 && (
-              <Stack gap="small">
+            <IrisUserBubble text={followUp || question} />
+            {!wsCompleteReady && <IrisThinkingBubble />}
+            {wsCompleteReady && (
+              <>
                 <Inline gap="xs" align="center">
-                  <Text size="xs" color="secondary">Read 5 Acme agreements</Text>
+                  <Text size="xs" color="secondary">Read 10 Acme agreements</Text>
                   <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
                 </Inline>
-                <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  Scanning your <strong>5 Acme agreements</strong> for{' '}
-                  <strong>{userMessages[0] || 'contract terms'}</strong>. Here's a quick read:
-                </Text>
-                <div style={{ background: 'var(--ink-neutral-fade-05, #f7f7f9)', borderRadius: 8, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[
-                    { icon: 'status-check' as const, color: 'var(--ink-green-80, #2f9e44)', text: '3 of 5 agreements explicitly address this clause' },
-                    { icon: 'calendar' as const, color: 'var(--ink-text-primary)', text: 'Notice periods range from 60 to 90 days written notice' },
-                    { icon: 'status-warning' as const, color: 'var(--ink-orange-80, #d9480f)', text: '1 document flagged as low confidence — scan quality issue' },
-                  ].map((item, i) => (
-                    <Inline key={i} gap="xs" align="center">
-                      <Icon name={item.icon} size={13} color={item.color} style={{ flexShrink: 0 }} />
-                      <Text size="xs" style={{ color: item.color }}>{item.text}</Text>
-                    </Inline>
-                  ))}
+                <Stack gap="small">
+                  <Text size="sm" style={{ lineHeight: 1.65 }}>
+                    I found <strong>8 products and services</strong> across your Acme agreements — a mix of SaaS subscriptions, professional services, and support contracts. Pricing models vary: 4 are per-seat, 2 are fixed fee, and 2 are usage-based.
+                  </Text>
+                </Stack>
+
+                {/* Success card */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
+                  <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                  <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Worksheet created — Acme Products & Pricing</Text>
                 </div>
-                <Inline gap="xs">
-                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-                </Inline>
-              </Stack>
-            )}
 
-            {isThinking && followUpReady && convStep === 1 && <IrisThinkingBubble />}
-            {userMessages.length > 1 && followUpReady && <IrisUserBubble text={userMessages[1]} />}
-
-            {/* Step 2: detailed answer + worksheet CTA */}
-            {followUpReady && convStep >= 2 && !isThinking && (
-              <Stack gap="small">
-                <Text size="sm" style={{ lineHeight: 1.65 }}>
-                  The <strong>MSA</strong> requires <strong>90 days</strong> written notice; the <strong>DPA</strong> requires <strong>60 days</strong>. The SOW and Amendment inherit from the MSA — they don't carry independent clauses. Exhibit B is a degraded scan and was flagged <span style={{ color: 'var(--ink-orange-80, #d9480f)', fontWeight: 600 }}>Uncertain</span>.
-                </Text>
-                {!worksheetMode ? (
-                  <div style={{ background: 'var(--ink-purple-10, #f5f3ff)', border: '1px solid var(--ink-purple-30, #ddd9ff)', borderRadius: 10, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
-                    <Inline gap="xs" align="center">
-                      <IrisIcon />
-                      <Text size="sm" style={{ fontWeight: 600 }}>Generate a Termination Analysis Table?</Text>
-                    </Inline>
-                    <Text size="sm" style={{ lineHeight: 1.6, color: 'var(--ink-text-secondary)' }}>
-                      I'll run a structured extraction across all 5 agreements and build an interactive table with clause presence, notice period, and verified source snippets.
-                    </Text>
-                    <Inline gap="small">
-                      <button onClick={() => { if (onBuildWorksheet) onBuildWorksheet('termination-audit'); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        Yes, generate table
-                        <Icon name="arrow-right" size={13} color="#fff" />
+                {/* Follow-up chips */}
+                <Stack gap="xs">
+                  <Text size="sm" style={{ lineHeight: 1.65 }}>Your worksheet is ready. Here are some things you might want to explore next:</Text>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {[
+                      'Which agreement has the highest unit cost?',
+                      'Flag any agreements missing pricing details',
+                      'Show me agreements expiring in the next 90 days',
+                      'Add a column for auto-renewal notice deadlines',
+                    ].map(chip => (
+                      <button key={chip} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background 0.12s, border-color 0.12s' }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
+                      >
+                        <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+                        {chip}
                       </button>
-                      <button style={{ background: 'none', border: 'none', fontSize: 13, color: 'var(--ink-text-secondary)', cursor: 'pointer', fontFamily: 'inherit', padding: '8px 4px' }}>
-                        Not right now
-                      </button>
-                    </Inline>
+                    ))}
                   </div>
-                ) : (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
-                      <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
-                      <Text size="sm" style={{ color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Termination analysis table generated — 5 agreements</Text>
-                    </div>
-                    <Stack gap="small">
-                      <Text size="sm" style={{ lineHeight: 1.65 }}>Your table is ready. Try these to dig deeper:</Text>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {[
-                          'Which docs have the shortest notice window?',
-                          'Flag any documents missing a termination clause',
-                          "What's the earliest exit date on the MSA?",
-                          'Are any clauses marked uncertain?',
-                        ].map(q => (
-                          <button
-                            key={q}
-                            onMouseDown={(e) => { e.preventDefault(); setInputValue(q); }}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-default)', borderRadius: 20, padding: '8px 14px', fontSize: 13, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-10, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
-                          >
-                            <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
-                            {q}
-                          </button>
-                        ))}
-                      </div>
-                    </Stack>
-                  </>
-                )}
-                <Inline gap="xs">
-                  <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
-                  <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
-                </Inline>
-              </Stack>
+                </Stack>
+              </>
             )}
           </div>
           {irisInputArea}
@@ -1931,17 +2389,14 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
             </Inline>
             <Stack gap="small">
-              <Text size="sm" style={{ lineHeight: 1.65 }}>
-                The Acme Corporation MSA expires on April 26, 2027. It includes an auto-renewal clause that triggers 60 days prior, on February 25, 2027, unless either party provides written notice.
-              </Text>
-              <Inline gap="xs" align="center">
-                <Icon name="document" size={13} color="var(--ink-text-secondary)" />
-                <Text size="xs" color="secondary" style={{ textDecoration: 'underline', cursor: 'pointer' }}>MSA - Acme Corp.pdf, Section 12.1</Text>
-              </Inline>
+              <span style={{ fontSize: 'var(--ink-font-size-sm)', lineHeight: 1.65, display: 'block' }}>
+                The Acme Corporation MSA expires on April 26, 2027. It includes an auto-renewal clause that triggers 60 days prior, on February 25, 2027, unless either party provides written notice.<CitationBadge number={1} title="MSA - Acme Corp.pdf" excerpt="This Agreement shall automatically renew for successive one-year terms unless either party provides written notice of non-renewal no less than 60 days prior to the end of the then-current term." /><CitationBadge number={2} title="Order Form - Cloud Storage.pdf" excerpt="Renewal terms are governed by the Master Services Agreement dated January 14, 2023. Pricing subject to change with 60 days notice prior to renewal date." />
+              </span>
             </Stack>
             <Inline gap="xs">
               <IconButton icon="thumbs-up" variant="tertiary" size="small" aria-label="Helpful" />
               <IconButton icon="thumbs-down" variant="tertiary" size="small" aria-label="Not helpful" />
+              <IconButton icon="copy" variant="tertiary" size="small" aria-label="Copy response" />
             </Inline>
             {followUp && (
               <>
@@ -1961,7 +2416,7 @@ function IrisSidebar({ question, followUp, onClose, onBuildWorksheet, worksheetM
               <Text size="xs" color="secondary">Would you like to explore this agreement further?</Text>
               {['Show renewal terms', 'List the parties', 'Summarize key terms'].map((chip) => (
                 <button key={chip} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', fontSize: 13, color: 'var(--ink-text-primary)', textAlign: 'left' }} onClick={() => setInputValue(chip)}>
-                  <Icon name="reply" size={13} color="var(--ink-text-secondary)" />
+                  <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
                   {chip}
                 </button>
               ))}
@@ -2150,15 +2605,15 @@ const WORKSHEET_LOADING_LABELS: Record<string, { title: string; steps: string[] 
   },
   'deep-analysis': {
     title: 'Building your Acme pricing analysis…',
-    steps: ['Scoping to 23 Acme agreements', 'Extracting product and pricing data', 'Setting up comparison columns'],
-  },
-  'finance-erp': {
-    title: 'Building your Acme cost & spend analysis…',
-    steps: ['Reading 10 Acme agreements', 'Pulling project and cost center from SAP Finance', 'Reconciling actuals vs contract value'],
+    steps: ['Scoping to 10 Acme agreements', 'Extracting product and pricing data', 'Setting up comparison columns'],
   },
   'termination-audit': {
     title: 'Analyzing Acme termination clauses…',
     steps: ['Reading 5 Acme agreements', 'Extracting Termination for Convenience clauses', 'Building comparison table with source snippets'],
+  },
+  'report-builder': {
+    title: 'Building your spend report…',
+    steps: ['Reading 47 agreements', 'Calculating committed spend by category', 'Configuring report layout'],
   },
 };
 
@@ -2189,13 +2644,154 @@ function WorksheetLoadingOverlay({ worksheetType }: { worksheetType: string }) {
    Worksheet Full-Page View (Vendor Exposure — Acme)
    ═══════════════════════════════════════ */
 
+function ReportBuilderView({ onBack, onSave, measure = 'Annual Contract Value', aggregation = 'Sum', groupBy = 'Vendor Category' }: { onBack: () => void; onSave?: () => void; measure?: string; aggregation?: string; groupBy?: string }) {
+  const fade = useFadeIn(0, 250);
+
+  const chartData: Record<string, { label: string; value: number; color: string }[]> = {
+    'Vendor Category': [
+      { label: 'Software', value: 2100, color: '#4B47C8' },
+      { label: 'Prof. Services', value: 1400, color: '#6E6BC4' },
+      { label: 'Infrastructure', value: 700, color: '#9693D4' },
+      { label: 'Hardware', value: 290, color: '#BDB9E5' },
+    ],
+    'Department': [
+      { label: 'Engineering', value: 1800, color: '#4B47C8' },
+      { label: 'Sales', value: 1100, color: '#6E6BC4' },
+      { label: 'Operations', value: 850, color: '#9693D4' },
+      { label: 'Finance', value: 450, color: '#BDB9E5' },
+    ],
+    'Agreement Type': [
+      { label: 'MSA', value: 1900, color: '#4B47C8' },
+      { label: 'SOW', value: 1200, color: '#6E6BC4' },
+      { label: 'License', value: 780, color: '#9693D4' },
+      { label: 'SaaS', value: 320, color: '#BDB9E5' },
+    ],
+  };
+
+  const bars = chartData[groupBy] || chartData['Vendor Category'];
+  const maxVal = Math.max(...bars.map(b => b.value));
+  const chartHeight = 320;
+  const yTicks = [0, 500, 1000, 1500, 2000, 2500];
+
+  return (
+    <div {...fade} style={{ ...fade.style, display: 'flex', flexDirection: 'column', height: '100%', background: '#fff' }}>
+      {/* Top bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: '1px solid var(--ink-border-color-subtle)', flexShrink: 0 }}>
+        <span style={{ fontSize: 16, fontWeight: 600 }}>Untitled report</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onBack} style={{ padding: '7px 16px', fontSize: 13, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          <button onClick={onSave || onBack} style={{ padding: '7px 16px', fontSize: 13, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Save</button>
+        </div>
+      </div>
+      {/* Body */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Left config panel */}
+        <div style={{ width: 300, borderRight: '1px solid var(--ink-border-color-subtle)', overflowY: 'auto', padding: '20px 20px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Data source */}
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Data source</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 8 }}>Choose the data you want to use to build this report</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--ink-border-color-default)', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>
+              <span>All agreements</span>
+              <Icon name="chevron-down" size={13} color="var(--ink-text-secondary)" />
+            </div>
+          </div>
+          <button style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--ink-text-primary)', fontFamily: 'inherit', padding: 0 }}>
+            <Icon name="plus" size={13} />
+            Add filter
+          </button>
+          <div style={{ borderTop: '1px solid var(--ink-border-color-subtle)', paddingTop: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Build your report</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 14 }}>Choose your metrics and how you want the data grouped</div>
+            <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Metric</div>
+              <div style={{ borderTop: '1px solid var(--ink-border-color-subtle)' }} />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>Measure</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-text-secondary)', marginBottom: 6 }}>Choose an attribute to start building a report</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--ink-purple-100, #4B47C8)', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer', background: 'var(--ink-purple-5, #f5f4fd)' }}>
+                  <span>{measure}</span>
+                  <Icon name="chevron-down" size={13} color="var(--ink-text-secondary)" />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Aggregation</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--ink-border-color-default)', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>
+                  <span>{aggregation}</span>
+                  <Icon name="chevron-down" size={13} color="var(--ink-text-secondary)" />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Currency</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--ink-border-color-default)', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>
+                  <span>USD</span>
+                  <Icon name="chevron-down" size={13} color="var(--ink-text-secondary)" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Group by</span>
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}><Icon name="close" size={13} color="var(--ink-text-secondary)" /></button>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 2 }}>Group by field</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-text-secondary)', marginBottom: 6 }}>Select a field to group or break down your metric by</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid var(--ink-purple-100, #4B47C8)', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer', background: 'var(--ink-purple-5, #f5f4fd)' }}>
+                <span>{groupBy}</span>
+                <Icon name="chevron-down" size={13} color="var(--ink-text-secondary)" />
+              </div>
+            </div>
+          </div>
+          <button style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--ink-text-primary)', fontFamily: 'inherit', padding: 0 }}>
+            <Icon name="plus" size={13} />
+            Segment by
+          </button>
+        </div>
+        {/* Right chart panel */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 60px' }}>
+          <div style={{ width: '100%', maxWidth: 700 }}>
+            <svg width="100%" viewBox={`0 0 600 ${chartHeight + 60}`} style={{ overflow: 'visible' }}>
+              {/* Y-axis grid lines and labels */}
+              {yTicks.map(tick => {
+                const y = chartHeight - (tick / (maxVal * 1.15)) * chartHeight;
+                return (
+                  <g key={tick}>
+                    <line x1={50} y1={y} x2={580} y2={y} stroke="#e5e5e5" strokeWidth={1} strokeDasharray={tick === 0 ? '0' : '4,3'} />
+                    <text x={44} y={y + 4} textAnchor="end" fontSize={11} fill="#888">${tick >= 1000 ? (tick/1000) + 'K' : tick}</text>
+                  </g>
+                );
+              })}
+              {/* Bars */}
+              {bars.map((bar, i) => {
+                const barWidth = Math.min(80, (530 / bars.length) * 0.6);
+                const spacing = 530 / bars.length;
+                const x = 50 + i * spacing + spacing / 2 - barWidth / 2;
+                const barH = (bar.value / (maxVal * 1.15)) * chartHeight;
+                const y = chartHeight - barH;
+                return (
+                  <g key={bar.label}>
+                    <rect x={x} y={y} width={barWidth} height={barH} fill={bar.color} rx={3} />
+                    <text x={x + barWidth / 2} y={y - 6} textAnchor="middle" fontSize={11} fontWeight={600} fill={bar.color}>${(bar.value/1000).toFixed(1)}M</text>
+                    <text x={x + barWidth / 2} y={chartHeight + 18} textAnchor="middle" fontSize={12} fill="#555">{bar.label}</text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onBack: () => void; worksheetType?: string }) {
   const [dataReady, setDataReady] = useState(false);
   const fade = useFadeIn(0, 250);
   const isRenewalView = worksheetType === 'renewal-scan';
   const isAutoRenewView = worksheetType === 'auto-renew-risk';
   const isDeepAnalysisView = worksheetType === 'deep-analysis';
-  const isFinanceView = worksheetType === 'finance-erp';
   const isTerminationView = worksheetType === 'termination-audit';
 
   useEffect(() => {
@@ -2703,93 +3299,9 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
     },
   ];
 
-  /* ── Finance / ERP data ── */
-  const financeRows = [
-    { id: 'fn1', fileName: 'MSA - Acme Corp.pdf', type: 'MSA', effectiveDate: 'Apr 26, 2022', endDate: 'Apr 26, 2027', contractValue: '$180,000/yr', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '$162,000', variance: '-$18,000', notes: '10% volume discount applied' },
-    { id: 'fn2', fileName: 'SOW - Acme Implementation.pdf', type: 'SOW', effectiveDate: 'Jan 15, 2024', endDate: 'Aug 18, 2026', contractValue: '$45,000', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '$45,000', variance: '$0', notes: 'Fully invoiced' },
-    { id: 'fn3', fileName: 'NDA - Acme Corp.pdf', type: 'NDA', effectiveDate: 'Apr 26, 2022', endDate: 'Aug 18, 2026', contractValue: '—', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '—', variance: '—', notes: 'No financial terms' },
-    { id: 'fn4', fileName: 'DPA - Acme Corp.pdf', type: 'DPA', effectiveDate: 'Apr 26, 2022', endDate: '—', contractValue: '—', project: 'PRJ-1023 · CRM Rollout', costCenter: '4001 · Sales Ops', actualSpend: '—', variance: '—', notes: 'No financial terms' },
-    { id: 'fn5', fileName: 'Enterprise - Acme DataStore.pdf', type: 'License', effectiveDate: 'Jun 1, 2023', endDate: 'May 31, 2026', contractValue: '$96,000/yr', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$88,400', variance: '-$7,600', notes: '5% multi-year discount' },
-    { id: 'fn6', fileName: 'SOW - Acme Managed IT Q2-2024.pdf', type: 'SOW', effectiveDate: 'Jul 1, 2024', endDate: 'Dec 31, 2024', contractValue: '$52,000', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$52,000', variance: '$0', notes: 'Fully invoiced' },
-    { id: 'fn7', fileName: 'SOW - Acme Data Migration.pdf', type: 'SOW', effectiveDate: 'Sep 5, 2024', endDate: 'Feb 28, 2025', contractValue: '$38,000', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$41,200', variance: '+$3,200', notes: '$3.2K overage — approved' },
-    { id: 'fn8', fileName: 'Cloud Backup SLA - Acme.pdf', type: 'SLA', effectiveDate: 'Apr 1, 2023', endDate: 'Mar 31, 2026', contractValue: '$28,800/yr', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$19,600', variance: '-$9,200', notes: '$75K SLA penalty credit pending' },
-    { id: 'fn9', fileName: 'SOW - Acme IT Help Desk.pdf', type: 'SOW', effectiveDate: 'Jan 1, 2025', endDate: 'Dec 31, 2025', contractValue: '$72,000', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$54,000', variance: '-$18,000', notes: 'In progress — 75% complete' },
-    { id: 'fn10', fileName: 'SOW - Acme Cloud Ops 2025.pdf', type: 'SOW', effectiveDate: 'Jun 1, 2025', endDate: 'May 31, 2026', contractValue: '$55,200/yr', project: 'PRJ-2087 · Data Center Migration', costCenter: '5203 · IT Infrastructure', actualSpend: '$27,600', variance: '-$27,600', notes: '6 months remaining' },
-  ];
-
-  const ERP_BADGE = (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 700, background: 'var(--ink-green-10, #f3faf4)', color: 'var(--ink-green-80, #2f9e44)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 3, padding: '1px 5px', verticalAlign: 'middle', marginLeft: 5, lineHeight: 1.4 }}>
-      ERP
-    </span>
-  );
-
-  const financeColumns = [
-    {
-      key: 'fileName',
-      header: 'Agreement',
-      cell: (row: typeof financeRows[0]) => (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--ink-neutral-fade-05, #f5f5f8)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name="document" size={14} color="var(--ink-text-secondary)" />
-          </div>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>{row.fileName}</span>
-        </span>
-      ),
-      width: '220px',
-    },
-    {
-      key: 'type',
-      header: 'Type',
-      cell: (row: typeof financeRows[0]) => <span style={{ fontSize: 13 }}>{row.type}</span>,
-      width: '60px',
-    },
-    {
-      key: 'contractValue',
-      header: 'Contract Value',
-      cell: (row: typeof financeRows[0]) => <span style={{ fontSize: 13 }}>{row.contractValue}</span>,
-      width: '120px',
-    },
-    {
-      key: 'project',
-      header: <span>Project{ERP_BADGE}</span>,
-      cell: (row: typeof financeRows[0]) => dataReady ? <span style={{ fontSize: 13 }}>{row.project}</span> : <div className="answer-skeleton-line" style={{ height: 13, width: '80%', borderRadius: 3 }} />,
-      width: '200px',
-    },
-    {
-      key: 'costCenter',
-      header: <span>Cost Center{ERP_BADGE}</span>,
-      cell: (row: typeof financeRows[0]) => dataReady ? <span style={{ fontSize: 13 }}>{row.costCenter}</span> : <div className="answer-skeleton-line" style={{ height: 13, width: '75%', borderRadius: 3 }} />,
-      width: '170px',
-    },
-    {
-      key: 'actualSpend',
-      header: <span>Actual Spend{ERP_BADGE}</span>,
-      cell: (row: typeof financeRows[0]) => dataReady ? <span style={{ fontSize: 13 }}>{row.actualSpend}</span> : <div className="answer-skeleton-line" style={{ height: 13, width: '60%', borderRadius: 3 }} />,
-      width: '110px',
-    },
-    {
-      key: 'variance',
-      header: <span>Variance{ERP_BADGE}</span>,
-      cell: (row: typeof financeRows[0]) => {
-        if (!dataReady) return <div className="answer-skeleton-line" style={{ height: 13, width: '50%', borderRadius: 3 }} />;
-        const isOver = row.variance.startsWith('+');
-        const isNeutral = row.variance === '$0' || row.variance === '—';
-        const color = isOver ? 'var(--ink-orange-80, #d9480f)' : isNeutral ? 'var(--ink-text-secondary)' : 'var(--ink-green-80, #2f9e44)';
-        return <span style={{ fontSize: 13, color, fontWeight: isOver ? 600 : 400 }}>{row.variance}</span>;
-      },
-      width: '100px',
-    },
-    {
-      key: 'notes',
-      header: <span>Notes{ERP_BADGE}</span>,
-      cell: (row: typeof financeRows[0]) => dataReady ? <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{row.notes}</span> : <div className="answer-skeleton-line" style={{ height: 13, width: '85%', borderRadius: 3 }} />,
-      width: '180px',
-    },
-  ];
-
-  const viewTitle = isTerminationView ? 'Acme Corp — Termination for Convenience Audit' : isFinanceView ? 'Acme Corp — Cost & Spend Analysis' : isDeepAnalysisView ? 'Acme Corp — Products & Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk Tracker' : isRenewalView ? 'Vendor Renewals — Next 6 Months' : 'Acme Corp — Committed Spend & Usage';
-  const viewCrumb = isTerminationView ? 'Termination Analysis' : isFinanceView ? 'Cost & Spend Analysis' : isDeepAnalysisView ? 'Acme Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk' : isRenewalView ? 'Renewal Analysis' : 'Vendor Exposure Analysis — Acme Corp';
-  const viewMeta = isTerminationView ? '5 agreements · Acme Corp · Termination for Convenience · Created just now' : isFinanceView ? '10 agreements · Acme Corp · SAP Finance · Created just now' : isDeepAnalysisView ? '23 agreements · Acme Corp · Created just now' : isAutoRenewView ? '8 agreements · Risk-prioritized · Created just now' : isRenewalView ? '42 agreements · Vendor renewals · Created just now' : '3 agreements · Acme Corp · Created just now';
+  const viewTitle = isTerminationView ? 'Acme Corp — Termination for Convenience Audit' : isDeepAnalysisView ? 'Acme Corp — Products & Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk Tracker' : isRenewalView ? 'Vendor Renewals — Next 6 Months' : 'Acme Corp — Committed Spend & Usage';
+  const viewCrumb = isTerminationView ? 'Termination Analysis' : isDeepAnalysisView ? 'Acme Pricing Analysis' : isAutoRenewView ? 'Auto-Renewal Risk' : isRenewalView ? 'Renewal Analysis' : 'Vendor Exposure Analysis — Acme Corp';
+  const viewMeta = isTerminationView ? '5 agreements · Acme Corp · Termination for Convenience · Created just now' : isDeepAnalysisView ? '10 agreements · Acme Corp · Created just now' : isAutoRenewView ? '8 agreements · Risk-prioritized · Created just now' : isRenewalView ? '9 agreements · Vendor renewals · Created just now' : '3 agreements · Acme Corp · Created just now';
 
   return (
     <div {...fade} style={{ ...fade.style, display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
@@ -2806,7 +3318,7 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--ink-purple-10, #f5f3ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name={isTerminationView ? 'document' : isFinanceView ? 'currency-dollar' : isDeepAnalysisView ? 'chart-bar' : isAutoRenewView ? 'bell' : isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
+            <Icon name={isTerminationView ? 'document' : isDeepAnalysisView ? 'chart-bar' : isAutoRenewView ? 'bell' : isRenewalView ? 'calendar' : 'status-check'} size={18} color="var(--ink-purple-100, #4B47C8)" />
           </div>
           <h1 style={{ margin: 0, fontSize: 32, fontWeight: 400, color: 'var(--ink-text-primary)', lineHeight: 1.2 }}>{viewTitle}</h1>
         </div>
@@ -2853,17 +3365,6 @@ function WorksheetView({ onBack, worksheetType = 'vendor-exposure-acme' }: { onB
             selectable
             showColumnControl
             pagination={{ page: 1, pageSize: 50, totalItems: terminationRows.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }}
-          />
-        ) : isFinanceView ? (
-          <DataTable
-            columns={financeColumns}
-            data={financeRows}
-            getRowKey={(row) => row.id}
-            stickyHeader
-            rowHeight="tall"
-            selectable
-            showColumnControl
-            pagination={{ page: 1, pageSize: 50, totalItems: financeRows.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }}
           />
         ) : isDeepAnalysisView ? (
           <DataTable
@@ -2947,6 +3448,174 @@ const COLUMN_TYPE_EXPLANATIONS = [
     body: 'Because you asked about pricing constraints, this column extracts the maximum annual price escalation cap so you can flag high-risk renewals before negotiation begins.',
   },
 ];
+
+const WORKSHEET_EXPANDED_PROMPT = `Extract all products and services Acme Corp provides across your active agreements. For each item, capture the product or service name, pricing model (per-seat, usage-based, or fixed fee), unit rate or contract value, and any special discounts or volume terms. Include SaaS subscriptions, professional services, and support agreements. Flag any agreements where pricing details are missing or unclear.`;
+
+const WORKSHEET_EXAMPLE_CHIPS = ['Human Resources', 'Legal', 'Procurement', 'Sales', 'Security'];
+const WORKSHEET_EXAMPLE_PROMPTS: Record<string, string> = {
+  'Human Resources': 'What are the notice periods and termination-for-convenience clauses across all HR vendor agreements?',
+  'Legal': 'Which agreements contain indemnification clauses that expose us to uncapped liability?',
+  'Procurement': 'What products and services do we purchase from Acme, including pricing models and unit rates?',
+  'Sales': 'What are the auto-renewal terms and notice windows across our sales tooling contracts?',
+  'Security': 'Which software agreements include data processing agreements and what are their breach notification requirements?',
+};
+
+function StartWorksheetModal({ prefillQuery, onClose, onGenerate }: { prefillQuery?: string; onClose: () => void; onGenerate: () => void }) {
+  const [phase, setPhase] = useState<'thinking' | 'generating' | 'review'>('thinking');
+  const [typedText, setTypedText] = useState('');
+  const isThinking = phase === 'thinking';
+  const isGenerating = phase === 'generating';
+  const isReview = phase === 'review';
+
+  /* On mount: brief thinking pause, then start typewriter */
+  useEffect(() => {
+    const t = setTimeout(() => setPhase('generating'), 900);
+    return () => clearTimeout(t);
+  }, []);
+
+  /* Typewriter — runs whenever phase flips to 'generating' */
+  useEffect(() => {
+    if (phase !== 'generating') return;
+    setTypedText('');
+    let idx = 0;
+    const target = WORKSHEET_EXPANDED_PROMPT;
+    const id = setInterval(() => {
+      idx += 1;
+      setTypedText(target.slice(0, idx));
+      if (idx >= target.length) {
+        clearInterval(id);
+        setTimeout(() => setPhase('review'), 350);
+      }
+    }, 9);
+    return () => clearInterval(id);
+  }, [phase]);
+
+  const regenerate = () => setPhase('generating');
+
+  const leftPanel = (
+    <div style={{ width: 260, flexShrink: 0, background: 'linear-gradient(160deg, #3b27a8 0%, #2d1f8c 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ background: 'rgba(255,255,255,0.12)', borderRadius: 10, padding: '14px 12px', width: '100%' }}>
+        {[{ w: '60%', color: '#a78bfa' }, { w: '40%', color: '#818cf8' }].map((col, ci) => (
+          <div key={ci} style={{ display: 'flex', gap: 6, marginBottom: ci === 0 ? 10 : 0, alignItems: 'center' }}>
+            <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.2)', flex: 1 }} />
+            <div style={{ height: 8, borderRadius: 4, background: col.color, width: col.w }} />
+          </div>
+        ))}
+        {[0,1,2,3,4].map(i => (
+          <div key={i} style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+            <div style={{ height: 7, borderRadius: 3, background: 'rgba(255,255,255,0.15)', flex: 1 }} />
+            <div style={{ height: 7, borderRadius: 3, background: i % 3 === 0 ? '#c4b5fd' : i % 3 === 1 ? '#6366f1' : 'rgba(255,255,255,0.12)', width: ['55%','35%','45%','30%','50%'][i] }} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+      <div style={{ width: '100%', maxWidth: 860, maxHeight: 'calc(100vh - 64px)', borderRadius: 14, overflow: 'hidden', display: 'flex', boxShadow: '0 24px 64px rgba(0,0,0,0.28)' }}>
+        {leftPanel}
+
+        {/* Right white panel */}
+        <div style={{ flex: 1, background: '#fff', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '28px 28px 0' }}>
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-purple-05, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', borderRadius: 100, padding: '3px 10px', marginBottom: 12 }}>
+                <IrisSparkleIcon size={12} />
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>AI-Assisted</span>
+              </div>
+              <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--ink-text-primary)', lineHeight: 1.2, marginBottom: 8 }}>
+                {isReview ? 'Start a worksheet' : 'Start a worksheet'}
+              </h2>
+              <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>
+                {isReview
+                  ? 'Iris drafted a prompt from your question. Edit it or deploy as-is.'
+                  : 'Iris is drafting a structured extraction prompt from your question.'}
+              </p>
+            </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, color: 'var(--ink-text-secondary)', flexShrink: 0, marginLeft: 16, marginTop: -4 }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+
+          {/* Body */}
+          <div style={{ flex: 1, padding: '24px 28px 0' }}>
+            {/* Source pill — always visible */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '7px 12px', background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8 }}>
+              <Icon name="search" size={13} color="var(--ink-text-secondary)" />
+              <span style={{ fontSize: 12.5, color: 'var(--ink-text-secondary)', fontStyle: 'italic', flex: 1 }}>{prefillQuery}</span>
+              {(isThinking || isGenerating) && (
+                <div style={{ display: 'flex', gap: 3 }}>
+                  {[0,1,2].map(i => <span key={i} className="iris-thinking-dot" style={{ animationDelay: `${i * 0.18}s` }} />)}
+                </div>
+              )}
+            </div>
+
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', marginBottom: 4 }}>
+              {isReview ? 'Your prompt' : 'Generating prompt…'}
+            </label>
+            {isReview && (
+              <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--ink-text-secondary)' }}>You can edit this before deploying.</p>
+            )}
+
+            <div style={{ position: 'relative', border: `1.5px solid ${isReview ? 'var(--ink-purple-30, #ddd9ff)' : 'var(--ink-purple-40, #c4b5fd)'}`, borderRadius: 8, background: isReview ? '#fff' : 'var(--ink-purple-05, #f5f3ff)', overflow: 'hidden', transition: 'border-color 0.3s, background 0.3s' }}>
+              <div style={{ position: 'absolute', top: 12, left: 14, pointerEvents: 'none' }}>
+                <IrisSparkleIcon size={14} />
+              </div>
+              {isReview ? (
+                <textarea
+                  value={typedText}
+                  onChange={e => setTypedText(e.target.value)}
+                  rows={6}
+                  autoFocus
+                  style={{ display: 'block', width: '100%', border: 'none', outline: 'none', padding: '10px 14px 14px 36px', fontFamily: 'inherit', fontSize: 13.5, lineHeight: 1.7, resize: 'none', background: 'transparent', boxSizing: 'border-box', color: 'var(--ink-text-primary)' }}
+                />
+              ) : (
+                <div style={{ padding: '10px 14px 14px 36px', fontFamily: 'inherit', fontSize: 13.5, lineHeight: 1.7, color: isThinking ? 'transparent' : 'var(--ink-text-primary)', minHeight: 110, whiteSpace: 'pre-wrap', wordBreak: 'break-word', userSelect: 'none' }}>
+                  {typedText || ' '}
+                  {isGenerating && (
+                    <span style={{ display: 'inline-block', width: 2, height: '1em', background: 'var(--ink-purple-100, #4B47C8)', marginLeft: 1, verticalAlign: 'text-bottom', animation: 'iris-thinking-blink 0.7s step-end infinite' }} />
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px 28px 28px' }}>
+            {/* Left action */}
+            {isReview ? (
+              <button onClick={regenerate} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--ink-text-secondary)', fontFamily: 'inherit', padding: 0 }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--ink-purple-100, #4B47C8)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--ink-text-secondary)'; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 6.5A4.5 4.5 0 0 1 10.5 3.5M10.5 3.5V1M10.5 3.5H8M11 6.5A4.5 4.5 0 0 1 2.5 9.5M2.5 9.5V12M2.5 9.5H5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Regenerate
+              </button>
+            ) : (
+              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--ink-purple-100, #4B47C8)', fontFamily: 'inherit', padding: 0, textDecoration: 'underline', textUnderlineOffset: 2 }}>
+                What is a worksheet?
+              </button>
+            )}
+
+            {/* Right CTA */}
+            <button
+              disabled={!isReview}
+              onClick={isReview ? onGenerate : undefined}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: isReview ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-neutral-fade-20, #e0e0e8)', color: isReview ? '#fff' : 'var(--ink-text-secondary)', border: 'none', borderRadius: 6, padding: '10px 20px', fontSize: 13.5, fontWeight: 600, cursor: isReview ? 'pointer' : 'default', fontFamily: 'inherit', transition: 'background 0.15s, color 0.15s' }}
+              onMouseEnter={e => { if (isReview) (e.currentTarget as HTMLElement).style.background = '#3d39b0'; }}
+              onMouseLeave={e => { if (isReview) (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'; }}
+            >
+              <Icon name="arrow-right" size={14} color={isReview ? '#fff' : 'var(--ink-text-secondary)'} />
+              Build my worksheet
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function WorksheetModal({ onClose, worksheetType = 'renewals' }: { onClose: () => void; worksheetType?: string }) {
   const config = WORKSHEET_CONFIGS[worksheetType] || WORKSHEET_CONFIGS['renewals'];
@@ -3061,277 +3730,6 @@ function WorksheetModal({ onClose, worksheetType = 'renewals' }: { onClose: () =
    Acme Termination Block
    ═══════════════════════════════════════ */
 
-function AcmeTerminationBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
-  const [textInput, setTextInput] = useState('');
-  const fade = useFadeIn(120, 300);
-
-  const chips = [
-    'Termination for Convenience & Notice Periods',
-    'Survival Clauses',
-    'Generate a Full Comparison Table',
-  ];
-
-  const handleSubmit = (msg: string) => {
-    if (!msg.trim()) return;
-    setCollapsedViaIris(true);
-    setTextInput('');
-    setTimeout(() => setCollapsed(true), 80);
-    setTimeout(() => onFollowUp(msg.trim()), 150);
-  };
-
-  if (collapsed) return (
-    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <Inline gap="small" align="center">
-        <IrisIcon />
-        <Text size="sm" style={{ fontWeight: 500 }}>Acme Corp · 5 agreements · Contract terms</Text>
-      </Inline>
-      {collapsedViaIris ? (
-        <Inline gap="xs" align="center">
-          <span style={{ fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500 }}>Continued in Iris</span>
-          <Icon name="arrow-right" size={13} color="var(--ink-purple-100, #4B47C8)" />
-        </Inline>
-      ) : (
-        <button onClick={() => setCollapsed(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
-          <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
-        </button>
-      )}
-    </div>
-  );
-
-  return (
-    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px 0' }}>
-        <Inline gap="xs" align="center">
-          <IrisIcon />
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
-        </Inline>
-        <button onClick={() => setCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
-          <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
-        </button>
-      </div>
-
-      <div style={{ padding: '10px 18px 14px' }}>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)' }}>
-          I found <strong>5 agreements</strong> with Acme Corp. When it comes to contract terms and termination, I can audit specific clauses across all documents. What would you like to focus on?
-        </p>
-      </div>
-
-      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, padding: '0 18px 14px' }}>
-        {chips.map(chip => (
-          <button
-            key={chip}
-            onClick={() => handleSubmit(chip)}
-            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f8)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-          >
-            {chip}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ margin: '0 18px 14px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
-        <input
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); setTextInput(''); } }}
-          placeholder="Ask about contract terms..."
-          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
-        />
-        <button
-          onClick={() => { handleSubmit(textInput); setTextInput(''); }}
-          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
-        >
-          <Icon name="arrow-up" size={13} />
-        </button>
-      </div>
-
-      <div style={{ padding: '10px 18px 14px', borderTop: '1px solid var(--ink-border-color-subtle)', textAlign: 'center' as const }}>
-        <span style={{ fontSize: 11, color: 'var(--ink-text-secondary)', fontStyle: 'italic' }}>
-          Responses are generated with AI and should not be used as legal advice.{' '}
-          <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Learn how we use AI at Docusign.</span>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════
-   Acme Answer Card (current-state entity card)
-   ═══════════════════════════════════════ */
-
-function AcmeAnswerCard({ onChipSelect, flowId }: { onChipSelect: (msg: string) => void; flowId?: string }) {
-  const [visible, setVisible] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
-  const [activeChip, setActiveChip] = useState<string | null>(null);
-  const [textInput, setTextInput] = useState('');
-  const chipInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setVisible(true));
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  const handleTextSubmit = () => {
-    const val = textInput.trim();
-    if (!val) return;
-    setCollapsedViaIris(true);
-    setTextInput('');
-    setTimeout(() => setCollapsed(true), 80);
-    setTimeout(() => onChipSelect(val), 150);
-  };
-
-  const chips = [
-    { label: 'Summarize my relationship with Acme', msg: 'Summarize my relationship with Acme' },
-    { label: "What's expiring soon?", msg: "What's expiring soon?" },
-    { label: 'What products and services do we purchase from this vendor?', msg: 'What products and services do we purchase from this vendor?' },
-  ];
-
-  const FINANCE_MSG = "For these Acme contracts, show the project and cost center they're tied to, and how much we've actually spent vs the contract value, including any discounts or penalties.";
-
-  const handleChip = (msg: string) => {
-    setActiveChip(msg);
-    setTextInput(msg);
-    setTimeout(() => { chipInputRef.current?.focus(); chipInputRef.current?.select(); }, 30);
-  };
-
-  if (collapsed) return (
-    <CollapsedAnswerBar
-      summary="Acme Corp · 4 agreements · $225K/yr committed spend"
-      onExpand={() => { setCollapsed(false); setCollapsedViaIris(false); }}
-      irisActive={collapsedViaIris}
-    />
-  );
-
-  return (
-    <div style={{
-      marginBottom: 20,
-      background: '#fff',
-      border: '1px solid var(--ink-border-color-subtle)',
-      borderRadius: 8,
-      overflow: 'hidden',
-      opacity: visible ? 1 : 0,
-      transform: visible ? 'translateY(0)' : 'translateY(6px)',
-      transition: 'opacity 300ms cubic-bezier(0.33, 0, 0.67, 1), transform 300ms cubic-bezier(0.35, 0, 0.2, 1)',
-    }}>
-
-      {/* Header */}
-      <div style={{ padding: '16px 16px 14px', borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 2 }}>
-          <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
-            style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink-text-primary)', textDecoration: 'none', lineHeight: 1.3 }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
-          >
-            Acme Corp
-          </a>
-          <button
-            onClick={() => setCollapsed(true)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', marginTop: 2, flexShrink: 0 }}
-          >
-            <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
-          </button>
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 10 }}>
-          Party · 4 agreements on record
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>
-          An established software vendor with a 3-year relationship. $225K/yr in committed spend across an MSA, SOW, NDA, and DPA. 2 agreements are coming up for action before Q3.
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div style={{ borderBottom: '1px solid var(--ink-border-color-subtle)' }}>
-        <div style={{ padding: '8px 16px 4px', fontSize: 11, color: 'var(--ink-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>
-          In the next 90 days
-        </div>
-        <div style={{ display: 'flex' }}>
-          {[
-            { value: '4', label: 'Active agreements' },
-            { value: '2', label: 'Expiring soon', urgent: true },
-            { value: '1', label: 'Up for renewal' },
-          ].map((stat, i) => (
-            <div key={stat.label} style={{ flex: 1, padding: '6px 16px 12px', borderLeft: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
-              <div style={{ fontSize: 26, fontWeight: 400, lineHeight: 1.1, color: stat.urgent ? '#D97706' : 'var(--ink-text-primary)', marginBottom: 3 }}>{stat.value}</div>
-              <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{stat.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Ask a follow up */}
-      <div style={{ padding: '12px 16px 14px', background: 'var(--ink-purple-05, #f5f3ff)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-            background: 'linear-gradient(135deg, #ede9ff 0%, #ddd5ff 100%)',
-            border: '1px solid var(--ink-purple-20, #d9d3ff)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <IrisIcon />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', marginBottom: 8 }}>
-              Ask a follow up
-            </div>
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' as const, marginBottom: 10 }}>
-              {chips.map(chip => (
-                <button
-                  key={chip.label}
-                  onClick={() => handleChip(chip.msg)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center',
-                    background: '#fff',
-                    border: '1px solid var(--ink-border-color-default)',
-                    borderRadius: 100, padding: '5px 12px', fontSize: 12,
-                    color: 'var(--ink-text-primary)',
-                    cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
-                    transition: 'background 150ms ease, transform 100ms ease',
-                    transform: activeChip === chip.msg ? 'scale(0.95)' : 'scale(1)',
-                  }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-05, #f5f3ff)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 5px 5px 14px' }}>
-              <input
-                ref={chipInputRef}
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                onFocus={() => { if (flowId === 'sq_finance' && !textInput) setTextInput(FINANCE_MSG); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleTextSubmit(); }}
-                placeholder={flowId === 'sq_finance' ? 'Show project, cost center & actual spend…' : 'Ask something about Acme...'}
-                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
-              />
-              <button
-                onClick={handleTextSubmit}
-                style={{
-                  width: 28, height: 28, borderRadius: '50%', border: 'none',
-                  cursor: textInput.trim() ? 'pointer' : 'default',
-                  background: 'var(--ink-purple-100, #4B47C8)',
-                  opacity: textInput.trim() ? 1 : 0.38,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, transition: 'opacity 150ms', color: '#fff',
-                }}
-              >
-                <Icon name="arrow-up" size={13} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  );
-}
 
 function DeepAnalysisAnswerCard({ onCTA }: { onCTA: () => void }) {
   const [visible, setVisible] = useState(false);
@@ -3351,7 +3749,7 @@ function DeepAnalysisAnswerCard({ onCTA }: { onCTA: () => void }) {
 
   if (collapsed) return (
     <CollapsedAnswerBar
-      summary="23 Acme agreements · 3 product categories · Pricing analysis"
+      summary="10 Acme agreements · 3 product categories · Pricing analysis"
       onExpand={() => { setCollapsed(false); setCtaClicked(false); }}
       irisActive={ctaClicked}
     />
@@ -3397,7 +3795,7 @@ function DeepAnalysisAnswerCard({ onCTA }: { onCTA: () => void }) {
           </button>
         </div>
         <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 10 }}>
-          Party · 23 agreements on record
+          Party · 10 agreements on record
         </div>
         <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>
           An established software vendor with a 3-year relationship spanning IT infrastructure, cloud services, and professional services engagements.
@@ -3447,7 +3845,7 @@ function DeepAnalysisAnswerCard({ onCTA }: { onCTA: () => void }) {
               Analyze products, pricing, and terms
             </div>
             <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginBottom: 10 }}>
-              Ask questions across all 23 Acme agreements
+              Ask questions across all 10 Acme agreements
             </div>
             <button
               onClick={handleCTA}
@@ -3528,9 +3926,10 @@ function CollapsedAnswerBar({ summary, onExpand, irisActive }: { summary: string
     >
       <IrisIcon />
       <span style={{ flex: 1, fontSize: 13, color: 'var(--ink-text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{summary}</span>
-      {irisActive && <span style={{ fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500, flexShrink: 0 }}>Continued in Iris</span>}
-      {irisActive && <Icon name="arrow-right" size={13} color="var(--ink-purple-100, #4B47C8)" />}
-      <Icon name="chevron-down" size={13} color="var(--ink-text-secondary)" />
+      {irisActive
+        ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500, flexShrink: 0 }}>Moved to Iris Chat <Icon name="arrow-right" size={12} color="var(--ink-purple-100, #4B47C8)" /></span>
+        : <Icon name="chevron-down" size={13} color="var(--ink-text-secondary)" />
+      }
     </div>
   );
 }
@@ -3951,51 +4350,6 @@ function VendorExposureAnswerBlock({ onContinue, onBuildWorksheet }: { onContinu
    Auto-Renew Answer Block
    ═══════════════════════════════════════ */
 
-function AutoRenewAnswerBlock({ onContinue }: { onContinue: (msg: string) => void }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
-  const handle = (msg: string) => { setCollapsed(true); setCollapsedViaIris(true); onContinue(msg); };
-  if (collapsed) return <CollapsedAnswerBar summary="8 contracts with active auto-renewal clauses — 3 with price escalation risk" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
-  return (
-    <div style={{ background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '16px 20px', marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <Inline gap="xs" align="center">
-          <IrisIcon />
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-purple-100)' }}>Iris</span>
-        </Inline>
-        <button onClick={() => setCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}>
-          <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
-        </button>
-      </div>
-      <Text size="sm" style={{ lineHeight: 1.65, marginBottom: 12, display: 'block' }}>
-        I've identified <strong>8 contracts</strong> with auto-renewal clauses active within the next 45 days — and <strong>3 of them</strong> have price escalation tied to renewal. Want me to score them by risk level?
-      </Text>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 8 }}>
-        {[
-          { label: 'Show me the 3 with price escalation', scripted: false },
-          { label: "What counts as high risk?", scripted: false },
-          { label: 'Yes, score by risk', scripted: true },
-        ].map((chip) => (
-          <button
-            key={chip.label}
-            onClick={() => chip.scripted ? handle('Yes, score by risk') : handle('')}
-            style={{
-              display: 'inline-flex', alignItems: 'center',
-              background: '#fff', border: '1px solid var(--ink-border-color-default)',
-              borderRadius: 100, padding: '5px 12px', fontSize: 12,
-              color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 400,
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-          >
-            {chip.label}
-          </button>
-        ))}
-      </div>
-      <InlineFollowUp onContinue={handle} chips={[]} prefill="Yes, score by risk" />
-    </div>
-  );
-}
 
 /* ═══════════════════════════════════════
    AI Answer Block
@@ -4090,79 +4444,20 @@ function AcmePartyCard({ onContinue, onBuildWorksheet }: { onContinue: (msg: str
 }
 
 /* ═══════════════════════════════════════
-   Auto-Renewal Risk Answer Block (question-based, cross-supplier)
+   Spend by Category Answer Block
    ═══════════════════════════════════════ */
 
-function AcmeUpdatesBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
-  const [textInput, setTextInput] = useState('');
-  const fade = useFadeIn(120, 300);
-
-  const chips = [
-    "What's expiring soon?",
-    'Summarize my relationship with Acme',
-    'Are there any price increase clauses?',
-    'Show me the latest SOW',
-  ];
-
-  const handleSubmit = (msg: string) => {
-    if (!msg.trim()) return;
-    onFollowUp(msg.trim());
-  };
-
-  return (
-    <div {...fade} style={{ ...fade.style, background: 'var(--ink-purple-5, #f5f4fd)', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
-
-      {/* Iris attribution */}
-      <div style={{ padding: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <IrisIcon />
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
-        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>· suggested questions about Acme</span>
-      </div>
-
-      <div style={{ padding: '12px 18px 8px', display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
-        {chips.map(chip => (
-          <button
-            key={chip}
-            onClick={() => handleSubmit(chip)}
-            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-10, #eeecfb)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-          >
-            {chip}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ margin: '8px 18px 16px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
-        <input
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); setTextInput(''); } }}
-          placeholder="Ask something about Acme..."
-          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
-        />
-        <button
-          onClick={() => { handleSubmit(textInput); setTextInput(''); }}
-          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
-        >
-          <Icon name="arrow-up" size={13} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AcmeDeepBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
+function SpendAnswerBlock({ onFollowUp, sidebarOpen }: { onFollowUp: (msg: string) => void; sidebarOpen?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [collapsedViaIris, setCollapsedViaIris] = useState(false);
   const [textInput, setTextInput] = useState('');
   const fade = useFadeIn(120, 300);
 
-  const chips = [
-    'Show me pricing and licensing terms',
-    'Flag any price escalation clauses',
-    'Build a pricing comparison table',
-  ];
+  useEffect(() => {
+    if (!sidebarOpen && collapsed) { setCollapsed(false); setCollapsedViaIris(false); }
+  }, [sidebarOpen]);
+
+  const chips = ['Build a spend report', 'Show top vendors by spend', 'Flag contracts expiring in 90 days'];
 
   const handleSubmit = (msg: string) => {
     if (!msg.trim()) return;
@@ -4173,48 +4468,269 @@ function AcmeDeepBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
   };
 
   if (collapsed) return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--ink-purple-5, #f5f4fd)', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 12, padding: '10px 16px', marginBottom: 16 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '10px 16px', marginBottom: 16 }}>
       <Inline gap="small" align="center">
         <IrisIcon />
-        <Text size="sm" style={{ fontWeight: 500 }}>Acme Corp · 23 agreements · Products & pricing</Text>
+        <Text size="sm" style={{ fontWeight: 500 }}>Spend by category · 47 agreements</Text>
       </Inline>
-      {collapsedViaIris ? (
-        <Inline gap="xs" align="center">
-          <span style={{ fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500 }}>Continued in Iris</span>
-          <Icon name="arrow-right" size={13} color="var(--ink-purple-100, #4B47C8)" />
-        </Inline>
-      ) : (
-        <button onClick={() => setCollapsed(false)} style={{ fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>Show</button>
-      )}
+      <button onClick={() => setCollapsed(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
+        <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
+      </button>
     </div>
   );
 
   return (
-    <div {...fade} style={{ ...fade.style, background: 'var(--ink-purple-5, #f5f4fd)', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
       <div style={{ padding: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
         <IrisIcon />
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
-        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>· Acme Corp · 23 agreements</span>
+        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>· 47 agreements</span>
       </div>
       <div style={{ padding: '10px 18px 12px' }}>
         <p style={{ margin: 0, fontSize: 14, lineHeight: 1.65, color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}>
-          Across your <strong>23 Acme agreements</strong>, you purchase <strong>3 categories</strong> of products and services: <strong>Cloud storage &amp; hosting</strong> (10 agreements, volume-tiered pricing), <strong>Managed IT support</strong> (8 agreements, flat fee), and <strong>Professional services</strong> (5 agreements, time &amp; materials). Total committed spend is <strong>$225K/yr</strong>.
+          Across your <strong>47 agreements</strong>, total committed spend is <strong>$4.2M/yr</strong>. Software is the largest category at <strong>$2.1M</strong>, followed by professional services (<strong>$1.4M</strong>) and infrastructure (<strong>$700K</strong>). Three vendor categories have contracts expiring within 90 days.<CitationBadge number={1} title="Spend Summary — All Vendors" excerpt="Annual committed spend as of Q2 2027: Software $2.1M, Professional Services $1.4M, Infrastructure & Hosting $700K. Figures reflect executed order forms and active SOWs only." /><CitationBadge number={2} title="MSA - Acme Corp.pdf" excerpt="Aggregate spend across all active agreements with Acme Solutions totals $1.87M annually, representing the largest single-vendor relationship in the portfolio." />
+        </p>
+      </div>
+      <div style={{ padding: '0 18px 8px', display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
+        {chips.map(chip => (
+          <button key={chip} onClick={() => handleSubmit(chip)}
+            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: 'var(--ink-neutral-fade-05)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-10)'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'}>
+            {chip === 'Build a spend report' && <Icon name="chart-bar" size={12} color="var(--ink-purple-60, #7b77d9)" />}
+            {chip}
+          </button>
+        ))}
+      </div>
+      <div style={{ margin: '4px 18px 16px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-neutral-fade-05)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+        <input value={textInput} onChange={e => setTextInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleSubmit(textInput); }}
+          placeholder="Ask about your vendor spend..."
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }} />
+        <button onClick={() => handleSubmit(textInput)}
+          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}>
+          <Icon name="arrow-up" size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   Auto-Renewal Risk Answer Block (question-based, cross-supplier)
+   ═══════════════════════════════════════ */
+
+function RenewalAnswerBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const fade = useFadeIn(120, 300);
+
+  const handleChip = (msg: string) => {
+    setCollapsedViaIris(true);
+    setTimeout(() => setCollapsed(true), 80);
+    setTimeout(() => onFollowUp(msg), 150);
+  };
+
+  const handleSubmit = (msg: string) => {
+    if (!msg.trim()) return;
+    setCollapsedViaIris(true);
+    setTextInput('');
+    setTimeout(() => setCollapsed(true), 80);
+    setTimeout(() => onFollowUp(msg.trim()), 150);
+  };
+
+  if (collapsed) return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '10px 16px', marginBottom: 16, cursor: 'pointer' }} onClick={() => setCollapsed(false)}>
+      <Inline gap="small" align="center">
+        <IrisSparkleIcon size={14} />
+        <Text size="sm" style={{ fontWeight: 500 }}>Acme Corp · 7 agreements renewing · Renewal review</Text>
+      </Inline>
+      {collapsedViaIris
+        ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500 }}>Moved to Iris Chat <Icon name="arrow-right" size={12} color="var(--ink-purple-100, #4B47C8)" /></span>
+        : <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
+      }
+    </div>
+  );
+
+  const chips = [
+    'Negotiate better pricing',
+    'Review SLA performance',
+    'Check auto-renewal deadlines',
+  ];
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <IrisSparkleIcon size={14} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>· Acme Corp · 7 agreements renewing</span>
+      </div>
+      <div style={{ padding: '10px 18px 12px' }}>
+        <p style={{ margin: '0 0 14px', fontSize: 14, lineHeight: 1.65, color: 'var(--ink-text-primary)' }}>
+          You have <strong>7 Acme agreements</strong> renewing in the next 6 months, totaling <strong>$535K</strong>. Three carry pricing or auto-renewal risk worth reviewing before their windows close.<CitationBadge number={1} title="MSA - Acme Corp.pdf, §8.4" excerpt="Unless terminated in accordance with Section 12, this Agreement renews automatically for one-year terms. Pricing adjustments not to exceed 5% annually apply at each renewal." /><CitationBadge number={2} title="Renewal Schedule - Acme Corp.pdf" excerpt="Q3 renewals: Cloud Storage ($210K), Managed Support ($180K), Professional Services ($145K). Auto-renewal notice deadlines fall between April 15 and May 30, 2027." />
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 7 }}>
+          {chips.map(chip => (
+            <button
+              key={chip}
+              onClick={() => handleChip(chip)}
+              style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: 'var(--ink-neutral-fade-05)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-10)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'; }}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ margin: '4px 18px 16px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-neutral-fade-05)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+        <input
+          value={textInput}
+          onChange={(e) => setTextInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); } }}
+          placeholder="Ask about these renewals..."
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+        />
+        <button
+          onClick={() => handleSubmit(textInput)}
+          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
+        >
+          <Icon name="arrow-up" size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AcmeUpdatesBlock({ onFollowUp, sidebarOpen }: { onFollowUp: (msg: string) => void; sidebarOpen?: boolean }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
+  const fade = useFadeIn(120, 300);
+
+  useEffect(() => {
+    if (!sidebarOpen && collapsed) {
+      setCollapsed(false);
+      setCollapsedViaIris(false);
+    }
+  }, [sidebarOpen]);
+
+  const chips = [
+    "What's expiring soon?",
+    'Summarize my relationship with Acme',
+    'Are there any price increase clauses?',
+  ];
+
+  const collapse = (msg: string) => {
+    setCollapsedViaIris(true);
+    setTimeout(() => setCollapsed(true), 80);
+    setTimeout(() => onFollowUp(msg), 150);
+  };
+
+  if (collapsed) return <CollapsedAnswerBar summary="Acme Corp · suggested questions" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+
+      {/* Row 1: Iris label + chips + Start Chat */}
+      <div style={{ padding: '10px 14px 10px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const }}>
+        <Inline gap="xs" align="center" style={{ flexShrink: 0, marginRight: 2 }}>
+          <IrisIcon />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+        </Inline>
+        <div style={{ width: 1, height: 14, background: 'var(--ink-border-color-subtle)', flexShrink: 0 }} />
+        {chips.map(chip => (
+          <button
+            key={chip}
+            onClick={() => collapse(chip)}
+            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '4px 13px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-10, #f0f0f3)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f7f7f9)'; }}
+          >
+            {chip}
+          </button>
+        ))}
+        <button
+          onClick={() => collapse('')}
+          style={{ fontSize: 13, fontWeight: 600, color: '#fff', background: 'var(--ink-purple-100, #4B47C8)', border: 'none', borderRadius: 100, padding: '4px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#3d39b0'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'; }}
+        >
+          Start Chat
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AcmeDeepBlock({ onFollowUp, onStartWorksheet }: { onFollowUp: (msg: string) => void; onStartWorksheet?: (query: string) => void }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedViaIris, setCollapsedViaIris] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const fade = useFadeIn(120, 300);
+
+  const chips = [
+    'Build a pricing comparison table',
+    'Show me pricing and licensing terms',
+    'Flag any price escalation clauses',
+  ];
+
+  const handleChip = (chip: string) => {
+    if (chip === 'Build a pricing comparison table' && onStartWorksheet) {
+      onStartWorksheet('What products and services do we purchase from Acme?');
+      return;
+    }
+    handleSubmit(chip);
+  };
+
+  const handleSubmit = (msg: string) => {
+    if (!msg.trim()) return;
+    setCollapsedViaIris(true);
+    setTextInput('');
+    setTimeout(() => setCollapsed(true), 80);
+    setTimeout(() => onFollowUp(msg.trim()), 150);
+  };
+
+  if (collapsed) return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '10px 16px', marginBottom: 16, cursor: 'pointer' }} onClick={() => setCollapsed(false)}>
+      <Inline gap="small" align="center">
+        <IrisSparkleIcon size={14} />
+        <Text size="sm" style={{ fontWeight: 500 }}>Acme Corp · 10 agreements · Products & pricing</Text>
+      </Inline>
+      {collapsedViaIris
+        ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500 }}>Moved to Iris Chat <Icon name="arrow-right" size={12} color="var(--ink-purple-100, #4B47C8)" /></span>
+        : <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
+      }
+    </div>
+  );
+
+  return (
+    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 18px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <IrisSparkleIcon size={14} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+        <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>· Acme Corp · 10 agreements</span>
+      </div>
+      <div style={{ padding: '10px 18px 12px' }}>
+        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.65, color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}>
+          Across your <strong>10 Acme agreements</strong>, you purchase <strong>3 categories</strong> of products and services: <strong>Cloud storage &amp; hosting</strong> (10 agreements, volume-tiered pricing), <strong>Managed IT support</strong> (8 agreements, flat fee), and <strong>Professional services</strong> (5 agreements, time &amp; materials). Total committed spend is <strong>$225K/yr</strong>.<CitationBadge number={1} title="MSA - Acme Corp.pdf" excerpt="Services provided under this Agreement include cloud infrastructure, managed IT support, and professional services engagements as detailed in each applicable Order Form." /><CitationBadge number={2} title="SOW - Acme Implementation.pdf" excerpt="Time and materials engagement capped at 800 hours annually. Blended rate of $185/hr applies to all professional services delivered under this statement of work." />
         </p>
       </div>
       <div style={{ padding: '0 18px 8px', display: 'flex', flexWrap: 'wrap' as const, gap: 8 }}>
         {chips.map(chip => (
           <button
             key={chip}
-            onClick={() => handleSubmit(chip)}
-            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-10, #eeecfb)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
+            onClick={() => handleChip(chip)}
+            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: 'var(--ink-neutral-fade-05)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-10)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'; }}
           >
+            {chip === 'Build a pricing comparison table' && <Icon name="table" size={12} color="var(--ink-purple-60, #7b77d9)" />}
             {chip}
           </button>
         ))}
       </div>
-      <div style={{ margin: '4px 18px 16px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+      <div style={{ margin: '4px 18px 16px', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-neutral-fade-05)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
         <input
           value={textInput}
           onChange={(e) => setTextInput(e.target.value)}
@@ -4319,106 +4835,12 @@ function AcmeSimpleBlock({ onFollowUp }: { onFollowUp: (msg: string) => void }) 
   );
 }
 
-function AutoRenewRiskBlock({ onBuildWorksheet, onFollowUp }: { onBuildWorksheet: (type: string) => void; onFollowUp: (msg: string) => void }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const [textInput, setTextInput] = useState('');
-  const fade = useFadeIn(120, 300);
-
-  const chips = [
-    'Which ones have already passed their notice deadline?',
-    'Which ones expire the soonest?',
-    'Can any of these still be cancelled?',
-  ];
-
-  const handleSubmit = (msg: string) => {
-    if (!msg.trim()) return;
-    onFollowUp(msg.trim());
-  };
-
-  if (collapsed) return (
-    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <Inline gap="small" align="center">
-        <IrisIcon />
-        <Text size="sm" style={{ fontWeight: 500 }}>Auto-renewal risk — 8 contracts</Text>
-      </Inline>
-      <button onClick={() => setCollapsed(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
-        <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
-      </button>
-    </div>
-  );
-
-  return (
-    <div {...fade} style={{ ...fade.style, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 12, marginBottom: 16, overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px 0' }}>
-        <Inline gap="xs" align="center">
-          <IrisIcon />
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
-        </Inline>
-        <button onClick={() => setCollapsed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
-          <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
-        </button>
-      </div>
-
-      {/* Answer */}
-      <div style={{ padding: '10px 18px 14px' }}>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)' }}>
-          I've found <strong>8 contracts</strong> with active auto-renewal clauses. Salesforce and Workday have already passed their cancellation windows — they've likely renewed for another year. Zendesk has a notice deadline in 9 days. What else would you like to understand about these contracts?
-        </p>
-      </div>
-
-      {/* Chips */}
-      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 8, padding: '0 18px 14px' }}>
-        {chips.map(chip => (
-          <button
-            key={chip}
-            onClick={() => handleSubmit(chip)}
-            style={{ fontSize: 13, color: 'var(--ink-text-primary)', background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const, transition: 'background 120ms' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05, #f5f5f8)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; }}
-          >
-            {chip}
-          </button>
-        ))}
-      </div>
-
-      {/* Input */}
-      <div style={{ margin: '0 18px 14px', display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
-        <input
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { handleSubmit(textInput); setTextInput(''); } }}
-          placeholder="Ask a follow-up..."
-          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
-        />
-        <button
-          onClick={() => { handleSubmit(textInput); setTextInput(''); }}
-          style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: textInput.trim() ? 'pointer' : 'default', opacity: textInput.trim() ? 1 : 0.38, flexShrink: 0, transition: 'opacity 150ms' }}
-        >
-          <Icon name="arrow-up" size={13} />
-        </button>
-      </div>
-
-      {/* Disclaimer */}
-      <div style={{ padding: '10px 18px 14px', borderTop: '1px solid var(--ink-border-color-subtle)', textAlign: 'center' as const }}>
-        <span style={{ fontSize: 11, color: 'var(--ink-text-secondary)', fontStyle: 'italic' }}>
-          Responses are generated with AI and should not be used as legal advice.{' '}
-          <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Learn how we use AI at Docusign.</span>
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function AIAnswerBlock({ onContinue, question, onBuildWorksheet }: { onContinue: (msg: string) => void; question: string; onBuildWorksheet: (type: string) => void }) {
   const [collapsed, setCollapsed] = useState(false);
   const [collapsedViaIris, setCollapsedViaIris] = useState(false);
   const q = question.toLowerCase();
-  const isAutoRenewQuery = q.includes('auto-renew') || q.includes('alert me');
   if (collapsed) return <CollapsedAnswerBar summary="Answer collapsed — click to expand" onExpand={() => setCollapsed(false)} irisActive={collapsedViaIris} />;
-  if (isAutoRenewQuery) {
-    return <AutoRenewAnswerBlock onContinue={onContinue} />;
-  }
   // Acme party card — simple name lookup
   if (q.trim() === 'acme' || (q.includes('acme') && q.length < 12 && !q.includes('?') && !q.includes('spend') && !q.includes('exposure'))) {
     return <AcmePartyCard onContinue={onContinue} onBuildWorksheet={onBuildWorksheet} />;
@@ -4474,9 +4896,9 @@ function AIAnswerBlock({ onContinue, question, onBuildWorksheet }: { onContinue:
             <Icon name="chevron-up" size={14} color="var(--ink-text-secondary)" />
           </button>
         </div>
-        <Text size="sm" style={{ lineHeight: 1.65, marginBottom: '12px', display: 'block' }}>
-          The Acme Corporation MSA expires on April 26, 2027. It includes an auto-renewal clause that triggers 60 days prior, on February 25, 2027, unless either party provides written notice.
-        </Text>
+        <span style={{ fontSize: 'var(--ink-font-size-sm)', lineHeight: 1.65, marginBottom: '12px', display: 'block' }}>
+          The Acme Corporation MSA expires on April 26, 2027. It includes an auto-renewal clause that triggers 60 days prior, on February 25, 2027, unless either party provides written notice.<CitationBadge number={1} title="MSA - Acme Corp.pdf" excerpt="This Agreement shall automatically renew for successive one-year terms unless either party provides written notice of non-renewal no less than 60 days prior to the end of the then-current term." /><CitationBadge number={2} title="Order Form - Cloud Storage.pdf" excerpt="Renewal terms are governed by the Master Services Agreement dated January 14, 2023. Pricing subject to change with 60 days notice prior to renewal date." />
+        </span>
         <InlineFollowUp onContinue={(msg) => onContinue(msg)} chips={[
           { label: 'Show related agreements', onClick: () => onContinue('Show all related agreements') },
           { label: 'Create a Report', onClick: () => {} },
@@ -4490,7 +4912,7 @@ function AIAnswerBlock({ onContinue, question, onBuildWorksheet }: { onContinue:
    Types
    ═══════════════════════════════════════ */
 
-type TabId = 'home' | 'agreements' | 'templates' | 'insights' | 'admin';
+type TabId = 'home' | 'agreements' | 'templates' | 'insights' | 'admin' | 'search-bar';
 type SidebarView = 'all-agreements' | 'drafts' | 'in-progress' | 'completed' | 'deleted' | 'parties' | 'requests';
 type TemplatesSidebarView = 'my-templates' | 'shared-with-me' | 'favorites' | 'all-templates';
 type InsightsSidebarView = 'overview' | 'dashboards' | 'reports';
@@ -4513,16 +4935,16 @@ interface Agreement {
 }
 
 const AGREEMENTS_DATA: Agreement[] = [
-  { id: '1', name: 'Complete with Docusign: rhi.pdf, Sample_Service_Agreement.pdf', recipient: 'To: Akshat Mishra', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:26', action: 'Copy' },
-  { id: '2', name: 'Here is your signed document: Sample_Service_Agreement.pdf', recipient: 'To: Akshat Mishra, [Placeholder]', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:23', action: 'Copy' },
-  { id: '3', name: 'Complete with Docusign: rhi.pdf', recipient: 'To: Akshat Mishra', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:16', action: 'Copy' },
-  { id: '4', name: 'Complete with Docusign: Sample_Service_Agreement.pdf', recipient: 'To: Akshat Mishra', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:14', action: 'Copy' },
-  { id: '5', name: 'Complete with Docusign: Sample_Service_Agreement.pdf', recipient: 'To: Akshat Mishra', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:10', action: 'Copy' },
-  { id: '6', name: 'Complete with Docusign: rhi.pdf, Sample_Service_Agreement.pdf', recipient: 'To: Akshat Mishra', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purging soon', date: '23/3/2026', time: '20:25', action: 'Download' },
-  { id: '7', name: 'Complete with Docusign: Screenshot 2026-03-18 at 10.27.30 AM.png', recipient: 'To: Akshat Mishra', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purging soon', date: '18/3/2026', time: '11:05', action: 'Download' },
-  { id: '8', name: 'Complete with Docusign: Screenshot 2026-03-18 at 10.27.21 AM.png', recipient: 'To: Akshat Mishra', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purging soon', date: '18/3/2026', time: '10:57', action: 'Download' },
-  { id: '9', name: 'Please sign: test.txt', recipient: 'To: Akshat Mishra', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purged', date: '26/2/2026', time: '12:15', action: 'Download' },
-  { id: '10', name: 'Complete with Docusign: Fontara Financial SOW.pdf', recipient: 'To: Akshat Mishra', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purged', date: '24/2/2026', time: '10:50', action: 'Download' },
+  { id: '1', name: 'Complete with Docusign: rhi.pdf, Sample_Service_Agreement.pdf', recipient: 'To: Casey Hudetz', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:26', action: 'Copy' },
+  { id: '2', name: 'Here is your signed document: Sample_Service_Agreement.pdf', recipient: 'To: Casey Hudetz, [Placeholder]', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:23', action: 'Copy' },
+  { id: '3', name: 'Complete with Docusign: rhi.pdf', recipient: 'To: Casey Hudetz', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:16', action: 'Copy' },
+  { id: '4', name: 'Complete with Docusign: Sample_Service_Agreement.pdf', recipient: 'To: Casey Hudetz', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:14', action: 'Copy' },
+  { id: '5', name: 'Complete with Docusign: Sample_Service_Agreement.pdf', recipient: 'To: Casey Hudetz', status: 'Voided', statusIcon: 'status-void', statusKind: 'neutral', statusSub: 'Purging soon', date: '24/3/2026', time: '20:10', action: 'Copy' },
+  { id: '6', name: 'Complete with Docusign: rhi.pdf, Sample_Service_Agreement.pdf', recipient: 'To: Casey Hudetz', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purging soon', date: '23/3/2026', time: '20:25', action: 'Download' },
+  { id: '7', name: 'Complete with Docusign: Screenshot 2026-03-18 at 10.27.30 AM.png', recipient: 'To: Casey Hudetz', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purging soon', date: '18/3/2026', time: '11:05', action: 'Download' },
+  { id: '8', name: 'Complete with Docusign: Screenshot 2026-03-18 at 10.27.21 AM.png', recipient: 'To: Casey Hudetz', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purging soon', date: '18/3/2026', time: '10:57', action: 'Download' },
+  { id: '9', name: 'Please sign: test.txt', recipient: 'To: Casey Hudetz', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purged', date: '26/2/2026', time: '12:15', action: 'Download' },
+  { id: '10', name: 'Complete with Docusign: Fontara Financial SOW.pdf', recipient: 'To: Casey Hudetz', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', statusSub: 'Purged', date: '24/2/2026', time: '10:50', action: 'Download' },
   { id: '11', name: 'Complete with DocuSign: Georgia-Residential-Lease-Agreement.pdf', recipient: 'From: Renewal Management', status: 'Completed', statusIcon: 'status-check', statusKind: 'success', date: '24/2/2026', time: '10:44', action: 'Download' },
 ];
 
@@ -4598,16 +5020,31 @@ interface NavigatorAgreement {
 }
 
 const NAVIGATOR_DATA: NavigatorAgreement[] = [
-  { id: 'n1', fileName: 'MSA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Acme Corp'], status: 'active', agreementType: 'MSA', contractValue: '$180,000/yr', expirationDate: 'Apr 26, 2027', effectiveDate: '4/26/2022', isAIAssisted: true },
-  { id: 'n2', fileName: 'SOW - Beacon Law Group.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Beacon Law Group'], status: 'active', agreementType: 'SOW', contractValue: '$78,000/yr', expirationDate: 'Aug 18, 2026', effectiveDate: '8/18/2024', isAIAssisted: true },
-  { id: 'n3', fileName: 'MSA - Globex.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Globex'], status: 'active', agreementType: 'MSA', contractValue: '$95,000/yr', expirationDate: 'Jul 12, 2026', effectiveDate: '7/12/2023', isAIAssisted: true },
-  { id: 'n4', fileName: 'Service Agreement - Pinnacle Consulting.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Pinnacle Consulting'], status: 'active', agreementType: 'Service', contractValue: '$62,000/yr', expirationDate: 'Jul 28, 2026', effectiveDate: '7/28/2023', isAIAssisted: true },
-  { id: 'n5', fileName: 'MSA - BioCore Innovations.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['BioCore Innovations'], status: 'active', agreementType: 'MSA', contractValue: '$140,000/yr', expirationDate: 'Aug 4, 2026', effectiveDate: '8/4/2023', isAIAssisted: true },
-  { id: 'n6', fileName: 'SaaS Agreement - Silph Co.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Silph Co.'], status: 'active', agreementType: 'SaaS', contractValue: '$48,000/yr', expirationDate: 'Sep 3, 2026', effectiveDate: '9/3/2023', isAIAssisted: true },
-  { id: 'n7', fileName: 'Services Agreement - Veridian Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Veridian Corp'], status: 'active', agreementType: 'Service', contractValue: '$112,000/yr', expirationDate: 'Sep 14, 2026', effectiveDate: '9/14/2023', isAIAssisted: false },
-  { id: 'n8', fileName: 'NDA - Horizon Partners.pdf', fileStatus: 'completed', fileStatusDetail: 'Signed NDA', parties: ['Horizon Partners'], status: 'active', agreementType: 'NDA', expirationDate: 'Aug 22, 2026', effectiveDate: '8/22/2024', isAIAssisted: false },
-  { id: 'n9', fileName: 'DPA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Data processing addendum', parties: ['Acme Corp'], status: 'active', agreementType: 'DPA', effectiveDate: '4/26/2022', isAIAssisted: false },
-  { id: 'n10', fileName: 'Order Form - Acme Corp (2023).pdf', fileStatus: 'completed', fileStatusDetail: 'Prior renewal', parties: ['Acme Corp'], status: 'inactive', agreementType: 'Order Form', contractValue: '$155,000/yr', expirationDate: 'Apr 25, 2023', effectiveDate: '4/26/2021', isAIAssisted: false },
+  { id: 'n1', fileName: 'Abi OrderFormDocumentData 2026-11-18 End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Fontara', 'SpringBox'], status: 'active', agreementType: 'Order Form', contractValue: '$750,000.00 USD', expirationDate: '2026-Nov-18', effectiveDate: '2025-Nov-17', isAIAssisted: true },
+  { id: 'n2', fileName: 'Abi FormDocumentData End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: [], status: 'active', agreementType: 'Form', isAIAssisted: false },
+  { id: 'n3', fileName: 'Abi FormDocumentData End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Ryan Kam'], status: 'active', agreementType: 'Form', isAIAssisted: false },
+  { id: 'n4', fileName: 'Abi C_AON_Quote End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - aiflow-service - aiflow-service-', parties: [], status: 'active', agreementType: 'AON_Quote', isAIAssisted: true },
+  { id: 'n5', fileName: 'Abi ReleaseWaiverDocumentData End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - aiflow-service - aiflow-service-', parties: [], status: 'active', agreementType: 'Release/Waiver', isAIAssisted: false },
+  { id: 'n6', fileName: 'Abi ReleaseWaiverDocumentData End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - aiflow-service - aiflow-service-', parties: [], status: 'active', agreementType: 'Release/Waiver', isAIAssisted: false },
+  { id: 'n7', fileName: 'Abi MsaDocumentData End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Dell'], status: 'active', agreementType: 'Master Service Agreement', isAIAssisted: true },
+  { id: 'n8', fileName: 'Abi ServicesAgreementDocumentData AUTO_RENEW End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['High Tech Co', 'Kyle Party 0'], status: 'active', agreementType: 'Services Agreement', isAIAssisted: false },
+  { id: 'n9', fileName: 'Abi C_DataSharingAgreement End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - inference-as-a-service - infer-', parties: [], status: 'active', agreementType: 'Data Sharing Agreement', isAIAssisted: true },
+  { id: 'n10', fileName: 'Abi ReleaseWaiverDocumentData End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - inference-as-a-service - infer-', parties: [], status: 'active', agreementType: 'Release/Waiver', isAIAssisted: false },
+  { id: 'n11', fileName: 'Abi ReleaseWaiverDocumentData End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - inference-as-a-service - infer-', parties: [], status: 'active', agreementType: 'Release/Waiver', isAIAssisted: false },
+  { id: 'n12', fileName: 'Abi DistributionDocumentData AUTO_RENEW 2021-05-01 End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['BASF SE', 'Solenis Switzerland Gm...'], status: 'active', agreementType: 'Supply / Distribution', expirationDate: '2027-Jan-01', effectiveDate: '2021-May-01', isAIAssisted: true },
+  { id: 'n13', fileName: 'Abi OtherDocumentData End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: [], status: 'active', agreementType: 'Miscellaneous', isAIAssisted: false },
+  { id: 'n14', fileName: 'Abi PurchaseOrderDocumentData 2026-08-12 End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Veridian Corp'], status: 'active', agreementType: 'Purchase Order', contractValue: '$124,500.00 USD', expirationDate: '2027-Aug-12', effectiveDate: '2026-Aug-12', isAIAssisted: true },
+  { id: 'n15', fileName: 'Abi NdaDocumentData End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - aiflow-service - aiflow-service-', parties: ['Horizon Partners'], status: 'active', agreementType: 'NDA', isAIAssisted: false },
+  { id: 'n16', fileName: 'Abi SaasAgreementDocumentData AUTO_RENEW End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Silph Co.'], status: 'active', agreementType: 'SaaS Agreement', contractValue: '$48,000.00 USD', expirationDate: '2027-Sep-03', effectiveDate: '2026-Sep-03', isAIAssisted: true },
+  { id: 'n17', fileName: 'Abi StatementOfWorkDocumentData End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Beacon Law Group'], status: 'active', agreementType: 'Statement of Work', contractValue: '$78,000.00 USD', isAIAssisted: false },
+  { id: 'n18', fileName: 'Abi AmendmentDocumentData End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - inference-as-a-service - infer-', parties: ['Acme Corp'], status: 'active', agreementType: 'Amendment', isAIAssisted: true },
+  { id: 'n19', fileName: 'Abi LicenseAgreementDocumentData 2025-03-01 End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['BioCore Innovations'], status: 'active', agreementType: 'License Agreement', contractValue: '$210,000.00 USD', expirationDate: '2028-Mar-01', effectiveDate: '2025-Mar-01', isAIAssisted: true },
+  { id: 'n20', fileName: 'Abi ConfidentialityAgreementDocumentData End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Pinnacle Consulting', 'Kyle Party 0'], status: 'active', agreementType: 'Confidentiality Agreement', isAIAssisted: false },
+  { id: 'n21', fileName: 'Abi ReleaseWaiverDocumentData End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - aiflow-service - aiflow-service-', parties: [], status: 'active', agreementType: 'Release/Waiver', isAIAssisted: false },
+  { id: 'n22', fileName: 'Abi FrameworkAgreementDocumentData AUTO_RENEW End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Globex', 'SpringBox'], status: 'active', agreementType: 'Framework Agreement', contractValue: '$95,000.00 USD', expirationDate: '2027-Jul-12', effectiveDate: '2024-Jul-12', isAIAssisted: true },
+  { id: 'n23', fileName: 'Abi SupportAgreementDocumentData End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Acme Corp'], status: 'active', agreementType: 'Support Agreement', contractValue: '$24,000.00 USD', isAIAssisted: false },
+  { id: 'n24', fileName: 'Abi DataProcessingDocumentData End', fileStatus: 'completed', fileStatusDetail: 'Authorization for Release - inference-as-a-service - infer-', parties: ['Fontara'], status: 'active', agreementType: 'Data Processing Agreement', isAIAssisted: true },
+  { id: 'n25', fileName: 'Abi ConsultingServicesDocumentData 2026-06-15 End', fileStatus: 'uploaded', fileStatusDetail: 'View Job', parties: ['Veridian Corp'], status: 'active', agreementType: 'Consulting Services', contractValue: '$62,000.00 USD', expirationDate: '2027-Jun-15', effectiveDate: '2026-Jun-15', isAIAssisted: false },
 ];
 
 const NAVIGATOR_PRICE_RAISE: NavigatorAgreement[] = [
@@ -4632,8 +5069,22 @@ const NAVIGATOR_SLA: NavigatorAgreement[] = [
 const NAVIGATOR_ACME: NavigatorAgreement[] = [
   { id: 'ac1', fileName: 'MSA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Acme Corp'], status: 'active', agreementType: 'MSA', contractValue: '$180,000/yr', expirationDate: 'Apr 26, 2027', effectiveDate: '4/26/2022', isAIAssisted: true },
   { id: 'ac2', fileName: 'SOW - Acme Implementation.pdf', fileStatus: 'completed', fileStatusDetail: 'Fixed scope project', parties: ['Acme Corp'], status: 'active', agreementType: 'SOW', contractValue: '$45,000', expirationDate: 'Aug 18, 2026', effectiveDate: '1/15/2024', isAIAssisted: true },
-  { id: 'ac3', fileName: 'NDA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Mutual non-disclosure', parties: ['Acme Corp'], status: 'active', agreementType: 'NDA', expirationDate: 'Aug 18, 2026', effectiveDate: '4/26/2022', isAIAssisted: false },
+  { id: 'ac3', fileName: 'NDA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Mutual non-disclosure', parties: ['Acme Corp'], status: 'active', agreementType: 'NDA', expirationDate: 'Apr 26, 2027', effectiveDate: '4/26/2022', isAIAssisted: false },
   { id: 'ac4', fileName: 'DPA - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Data processing addendum', parties: ['Acme Corp'], status: 'active', agreementType: 'DPA', effectiveDate: '4/26/2022', isAIAssisted: false },
+  { id: 'ac5', fileName: 'Order Form - Acme Core Platform (2024).pdf', fileStatus: 'completed', fileStatusDetail: 'Annual renewal', parties: ['Acme Corp'], status: 'active', agreementType: 'Order Form', contractValue: '$92,000/yr', expirationDate: 'Apr 26, 2025', effectiveDate: '4/26/2024', isAIAssisted: true },
+  { id: 'ac6', fileName: 'SOW - Acme Custom Development.pdf', fileStatus: 'completed', fileStatusDetail: 'Time & materials', parties: ['Acme Corp'], status: 'active', agreementType: 'SOW', contractValue: '$28,000', expirationDate: 'Dec 31, 2026', effectiveDate: '6/1/2026', isAIAssisted: true },
+  { id: 'ac7', fileName: 'SaaS Addendum - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Platform addendum', parties: ['Acme Corp'], status: 'active', agreementType: 'Addendum', effectiveDate: '4/26/2023', isAIAssisted: false },
+  { id: 'ac8', fileName: 'Training Services Agreement - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Annual training package', parties: ['Acme Corp'], status: 'active', agreementType: 'Service', contractValue: '$18,000/yr', expirationDate: 'Mar 15, 2027', effectiveDate: '3/15/2025', isAIAssisted: true },
+  { id: 'ac9', fileName: 'Support Agreement - Acme Corp.pdf', fileStatus: 'completed', fileStatusDetail: 'Premium support tier', parties: ['Acme Corp'], status: 'active', agreementType: 'Support', contractValue: '$24,000/yr', expirationDate: 'Apr 26, 2027', effectiveDate: '4/26/2025', isAIAssisted: true },
+  { id: 'ac10', fileName: 'Order Form - Acme Corp (2023).pdf', fileStatus: 'completed', fileStatusDetail: 'Prior renewal', parties: ['Acme Corp'], status: 'inactive', agreementType: 'Order Form', contractValue: '$155,000/yr', expirationDate: 'Apr 25, 2024', effectiveDate: '4/26/2022', isAIAssisted: false },
+];
+
+const NAVIGATOR_FONTARA: NavigatorAgreement[] = [
+  { id: 'fn1', fileName: 'MSA - Fontara Inc.pdf', fileStatus: 'completed', fileStatusDetail: 'Active agreement', parties: ['Fontara Inc.'], status: 'active', agreementType: 'MSA', contractValue: '$140,000/yr', expirationDate: 'Jun 30, 2027', effectiveDate: '7/1/2024', isAIAssisted: true },
+  { id: 'fn2', fileName: 'SOW - Fontara Data Migration.pdf', fileStatus: 'completed', fileStatusDetail: 'Fixed scope project', parties: ['Fontara Inc.'], status: 'active', agreementType: 'SOW', contractValue: '$62,000', expirationDate: 'Oct 31, 2026', effectiveDate: '1/15/2026', isAIAssisted: true },
+  { id: 'fn3', fileName: 'NDA - Fontara Inc.pdf', fileStatus: 'completed', fileStatusDetail: 'Mutual non-disclosure', parties: ['Fontara Inc.'], status: 'active', agreementType: 'NDA', expirationDate: 'Jun 30, 2027', effectiveDate: '7/1/2024', isAIAssisted: false },
+  { id: 'fn4', fileName: 'Order Form - Fontara Analytics (2025).pdf', fileStatus: 'completed', fileStatusDetail: 'Annual renewal', parties: ['Fontara Inc.'], status: 'active', agreementType: 'Order Form', contractValue: '$38,000/yr', expirationDate: 'Jul 1, 2026', effectiveDate: '7/1/2025', isAIAssisted: true },
+  { id: 'fn5', fileName: 'DPA - Fontara Inc.pdf', fileStatus: 'completed', fileStatusDetail: 'Data processing addendum', parties: ['Fontara Inc.'], status: 'active', agreementType: 'DPA', effectiveDate: '7/1/2024', isAIAssisted: false },
 ];
 
 const NAVIGATOR_AUTORENEW: NavigatorAgreement[] = [
@@ -4663,21 +5114,10 @@ function capitalize(str: string): string {
 
 const navigatorColumns: any[] = [
   {
-    key: 'aiAssisted',
-    header: '',
-    width: '40px',
-    cell: (row: NavigatorAgreement) =>
-      row.isAIAssisted ? (
-        <span className={dataTableStyles.aiSparkle}>
-          <AIIcon name="ai-spark-filled" size={14} />
-        </span>
-      ) : null,
-  },
-  {
     key: 'fileName',
-    header: 'File Name',
+    header: 'Original File Name',
     sortable: true,
-    width: '280px',
+    width: '320px',
     className: dataTableStyles.columnBorderRight,
     cell: (row: NavigatorAgreement) => (
       <div className={dataTableStyles.cellContent}>
@@ -4695,7 +5135,7 @@ const navigatorColumns: any[] = [
   {
     key: 'parties',
     header: 'Parties',
-    width: '180px',
+    width: '160px',
     cell: (row: NavigatorAgreement) => (
       <div className={dataTableStyles.cellContent}>
         {row.parties.length > 0 ? (
@@ -4705,9 +5145,7 @@ const navigatorColumns: any[] = [
               return <a key={i} href="#" className={dataTableStyles.partyMoreLink}>{party}</a>;
             }
             return (
-              <span key={i} className={dataTableStyles.partyChip}>
-                <a href="#" className={dataTableStyles.partyLink}>{party}</a>
-              </span>
+              <a key={i} href="#" className={dataTableStyles.partyLink}>{party}</a>
             );
           })
         ) : (
@@ -4717,29 +5155,13 @@ const navigatorColumns: any[] = [
     ),
   },
   {
-    key: 'status',
-    header: 'Status',
-    sortable: true,
-    width: '120px',
-    cell: (row: NavigatorAgreement) => (
-      <div className={dataTableStyles.statusCell}>
-        <span className={dataTableStyles.statusDot} data-status={row.status} />
-        <div className={dataTableStyles.statusText}>
-          <span className={dataTableStyles.statusLabel}>
-            {row.status === 'active' ? 'Active' : 'Inactive'}
-          </span>
-          {row.statusDate && (
-            <span className={dataTableStyles.statusDate}>{row.statusDate}</span>
-          )}
-        </div>
-      </div>
-    ),
-  },
-  {
     key: 'agreementType',
     header: 'Agreement Type',
     sortable: true,
-    width: '140px',
+    width: '180px',
+    cell: (row: NavigatorAgreement) => row.agreementType ? (
+      <span style={{ display: 'inline-block', fontSize: 12, color: 'var(--ink-text-primary)', background: 'var(--ink-neutral-fade-05, #f5f5f8)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 4, padding: '2px 8px', lineHeight: 1.5, whiteSpace: 'nowrap' as const }}>{row.agreementType}</span>
+    ) : <span style={{ color: 'var(--ink-text-secondary)' }}>—</span>,
   },
   {
     key: 'contractValue',
@@ -4918,16 +5340,16 @@ interface TemplateItem {
 }
 
 const TEMPLATES_DATA: TemplateItem[] = [
-  { id: '1', name: 'quick send', description: 'Default template for quick envelope sending', owner: 'Akshat Mishra', lastModified: '03/13/2026', shared: false, uses: 24, favorited: true },
-  { id: '2', name: 'shared template info', description: 'Shared informational template', owner: 'Akshat Mishra', lastModified: '08/12/2025', shared: true, uses: 12, favorited: true },
+  { id: '1', name: 'quick send', description: 'Default template for quick envelope sending', owner: 'Casey Hudetz', lastModified: '03/13/2026', shared: false, uses: 24, favorited: true },
+  { id: '2', name: 'shared template info', description: 'Shared informational template', owner: 'Casey Hudetz', lastModified: '08/12/2025', shared: true, uses: 12, favorited: true },
   { id: '3', name: 'Non-Disclosure Agreement', description: 'Standard NDA for external partners', owner: 'Legal Team', lastModified: '02/28/2026', shared: true, uses: 156, favorited: false },
   { id: '4', name: 'Service Agreement', description: 'Master service agreement template', owner: 'Legal Team', lastModified: '01/15/2026', shared: true, uses: 89, favorited: false },
   { id: '5', name: 'Offer Letter', description: 'Standard offer letter for new hires', owner: 'HR Department', lastModified: '03/05/2026', shared: true, uses: 203, favorited: false },
-  { id: '6', name: 'Consulting Agreement', description: 'Independent contractor consulting agreement', owner: 'Akshat Mishra', lastModified: '02/10/2026', shared: false, uses: 7, favorited: false },
+  { id: '6', name: 'Consulting Agreement', description: 'Independent contractor consulting agreement', owner: 'Casey Hudetz', lastModified: '02/10/2026', shared: false, uses: 7, favorited: false },
   { id: '7', name: 'Sales Contract', description: 'Standard sales contract with payment terms', owner: 'Sales Ops', lastModified: '03/20/2026', shared: true, uses: 342, favorited: false },
   { id: '8', name: 'Vendor Onboarding', description: 'New vendor setup and compliance form', owner: 'Procurement', lastModified: '12/08/2025', shared: true, uses: 45, favorited: false },
   { id: '9', name: 'Employment Agreement', description: 'Full-time employment agreement', owner: 'HR Department', lastModified: '03/01/2026', shared: true, uses: 178, favorited: false },
-  { id: '10', name: 'Change Order', description: 'Amendment to existing SOW or contract', owner: 'Akshat Mishra', lastModified: '03/22/2026', shared: false, uses: 3, favorited: false },
+  { id: '10', name: 'Change Order', description: 'Amendment to existing SOW or contract', owner: 'Casey Hudetz', lastModified: '03/22/2026', shared: false, uses: 3, favorited: false },
 ];
 
 const templateColumns: any[] = [
@@ -4985,8 +5407,8 @@ const REPORTS_DATA: ReportItem[] = [
   { id: '3', name: 'All agreements', type: 'report', owner: 'System', lastViewed: '02/28/2026', shared: true },
   { id: '4', name: 'Agreements with renewal notice date', type: 'report', owner: 'System', lastViewed: '02/26/2026', shared: true },
   { id: '5', name: 'Obligations by type', type: 'report', owner: 'System', lastViewed: '02/26/2026', shared: true },
-  { id: '6', name: 'Envelope Velocity Report', type: 'dashboard', owner: 'Akshat Mishra', lastViewed: '03/25/2026', shared: false },
-  { id: '7', name: 'Agreement Trends', type: 'dashboard', owner: 'Akshat Mishra', lastViewed: '03/20/2026', shared: false },
+  { id: '6', name: 'Envelope Velocity Report', type: 'dashboard', owner: 'Casey Hudetz', lastViewed: '03/25/2026', shared: false },
+  { id: '7', name: 'Agreement Trends', type: 'dashboard', owner: 'Casey Hudetz', lastViewed: '03/20/2026', shared: false },
   { id: '8', name: 'Renewals Dashboard', type: 'dashboard', owner: 'Legal Team', lastViewed: '03/15/2026', shared: true },
   { id: '9', name: 'Monthly Signing Activity', type: 'report', owner: 'System', lastViewed: '03/10/2026', shared: true },
   { id: '10', name: 'Compliance Overview', type: 'dashboard', owner: 'Legal Team', lastViewed: '03/01/2026', shared: true },
@@ -5069,7 +5491,7 @@ function HomePage() {
         textAlign: 'center',
       }}>
         <Heading level={3} style={{ color: 'white', fontWeight: 400, marginBottom: 'var(--ink-spacing-300)' }}>
-          Welcome back, Akshat Mishra
+          Welcome back, Casey Hudetz
         </Heading>
         <Inline gap="small" justify="center">
           <Button kind="brand" menuTrigger>Start</Button>
@@ -5445,7 +5867,7 @@ function Footer() {
    App
    ═══════════════════════════════════════ */
 
-const VALID_TABS: TabId[] = ['home', 'agreements', 'templates', 'insights', 'admin'];
+const VALID_TABS: TabId[] = ['home', 'agreements', 'templates', 'insights', 'admin', 'search-bar'];
 
 /* ═══════════════════════════════════════
    Agreement Detail View (Navigator Viewer)
@@ -5813,7 +6235,1141 @@ function getTabFromHash(): TabId {
   return VALID_TABS.includes(hash as TabId) ? (hash as TabId) : 'agreements';
 }
 
+/* ═══════════════════════════════════════
+   View Mode Toggle
+   ═══════════════════════════════════════ */
+function ViewModeToggle({
+  mode, onChange, searchBarActive, onSearchBarClick,
+}: {
+  mode: 'side-panel' | 'unified-search';
+  onChange: (m: 'side-panel' | 'unified-search') => void;
+  searchBarActive?: boolean;
+  onSearchBarClick?: () => void;
+}) {
+  type Opt = { key: string; label: string; icon: React.ReactNode };
+  const opts: Opt[] = [
+    {
+      key: 'side-panel',
+      label: 'Side Panel',
+      icon: (
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+          <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="1.5" stroke="currentColor" strokeWidth="1.4"/>
+          <line x1="9.5" y1="1.25" x2="9.5" y2="12.75" stroke="currentColor" strokeWidth="1.4"/>
+        </svg>
+      ),
+    },
+    {
+      key: 'unified-search',
+      label: 'AI Search',
+      icon: (
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+          <circle cx="6" cy="6" r="4.25" stroke="currentColor" strokeWidth="1.4"/>
+          <line x1="9.3" y1="9.3" x2="12.5" y2="12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          <path d="M11 1.5C11 1.5 11.18 2.58 11.65 3.05C12.12 3.52 13.2 3.2 13.2 3.2s-1.08.32-1.55.79C11.18 4.46 11 5.5 11 5.5s-.18-1.04-.65-1.51C9.88 3.52 8.8 3.2 8.8 3.2s1.08.32 1.55-.15C10.82 2.58 11 1.5 11 1.5z" fill="currentColor"/>
+        </svg>
+      ),
+    },
+    {
+      key: 'search-bar',
+      label: 'Search Bar',
+      icon: (
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+          <circle cx="6" cy="6" r="4.25" stroke="currentColor" strokeWidth="1.4"/>
+          <line x1="9.3" y1="9.3" x2="12.5" y2="12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <div style={{ display: 'flex', background: 'rgba(75,71,200,0.07)', borderRadius: 99, padding: 3, gap: 1, border: '1px solid rgba(75,71,200,0.2)' }}>
+      {opts.map(o => {
+        const active = o.key === 'search-bar' ? !!searchBarActive : mode === o.key && !searchBarActive;
+        const handleClick = o.key === 'search-bar'
+          ? () => onSearchBarClick?.()
+          : () => { onChange(o.key as 'side-panel' | 'unified-search'); };
+        return (
+          <button key={o.key} onClick={handleClick} style={{
+            padding: '4px 13px', borderRadius: 99, border: 'none', cursor: 'pointer',
+            background: active ? '#4B47C8' : 'transparent',
+            color: active ? 'white' : '#6B6B8A',
+            fontWeight: active ? 700 : 500, fontSize: 12, fontFamily: 'inherit',
+            transition: 'all 0.18s cubic-bezier(0.22,1,0.36,1)',
+            whiteSpace: 'nowrap' as const, display: 'flex', alignItems: 'center', gap: 5,
+            boxShadow: active ? '0 1px 4px rgba(75,71,200,0.28)' : 'none',
+          }}>
+            {o.icon}{o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   Unified Search Bar (AI Search filterBar mode)
+   ═══════════════════════════════════════ */
+
+const SAVED_SEARCHES_DATA = [
+  'testing',
+  'what is renewing in the next 90 days?',
+  'agreements expiring this quarter',
+  'Acme Corp contracts',
+  'auto-renewal clauses',
+  'amendments to master agreements',
+];
+
+const FILTER_ENTITIES = [
+  { name: 'ACME', type: 'Party' },
+  { name: 'ACME Co.', type: 'Party' },
+  { name: 'Acme Inc', type: 'Agreement Set' },
+  { name: 'Acme Technologies', type: 'Party' },
+  { name: 'Riverside Health Systems', type: 'Party' },
+  { name: 'Vertex Solutions', type: 'Party' },
+  { name: 'Global Logistics LLC', type: 'Agreement Set' },
+];
+
+const DOCUMENT_MATCHES_DATA = [
+  { name: 'Acme NDA.docx', sub: 'Name match' },
+  { name: 'Acme Cloud Services.doc', sub: 'Name match' },
+  { name: 'Acme Corp Master Services Agreement', sub: 'Name match' },
+  { name: 'Riverside Health Systems NDA', sub: 'Name match' },
+  { name: 'Global Logistics Master Agreement', sub: 'Name match' },
+];
+
+const EMPTY_STATE_DOCS = [
+  { name: 'Abi OtherDocumentData End - Miscellaneous', sub: 'Miscellaneous · Equilon Enterprises LLC' },
+  { name: 'Abi ReleaseWaiverDocumentData End - Release/Waiver', sub: 'Release/Waiver · Equilon Enterprises LLC' },
+];
+
+function boldMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text;
+  return (
+    <>{text.slice(0, idx)}<strong>{text.slice(idx, idx + query.length)}</strong>{text.slice(idx + query.length)}</>
+  );
+}
+
+function UnifiedSearchBar({
+  onSearch,
+  onAskIris,
+}: {
+  onSearch: (query: string) => void;
+  onAskIris: (query: string) => void;
+}) {
+  const [value, setValue] = useState('');
+  const [mode, setMode] = useState<'search' | 'iris'>('search');
+  const [open, setOpen] = useState(false);
+  const [hov, setHov] = useState<string | null>(null);
+  const [dismissedSaved, setDismissedSaved] = useState<Set<string>>(new Set());
+  const inputRef = useRef<HTMLInputElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const isSearch = mode === 'search';
+  const isIris = mode === 'iris';
+  const hasText = value.trim().length > 0;
+  const q = value.trim().toLowerCase();
+
+  const matchedSaved = q
+    ? SAVED_SEARCHES_DATA.filter(s => !dismissedSaved.has(s) && s.toLowerCase().includes(q)).slice(0, 1)
+    : SAVED_SEARCHES_DATA.filter(s => !dismissedSaved.has(s)).slice(0, 2);
+  const matchedEntities = q
+    ? FILTER_ENTITIES.filter(e => e.name.toLowerCase().includes(q)).slice(0, 3)
+    : [];
+  const matchedDocs = q
+    ? DOCUMENT_MATCHES_DATA.filter(d => d.name.toLowerCase().includes(q)).slice(0, 2)
+    : [];
+  const dynamicQuickAnswers = q
+    ? [`Do I have contracts with ${value.trim()}?`, `Do I have any active agreements with ${value.trim()}?`]
+    : [];
+
+  const handleFocus = () => { clearTimeout(closeTimer.current); setOpen(true); };
+  const handleBlur = () => { closeTimer.current = setTimeout(() => setOpen(false), 180); };
+
+  const fireSearch = () => {
+    if (!value.trim()) return;
+    onSearch(value.trim());
+    setOpen(false);
+  };
+
+  const fireIris = () => {
+    if (!value.trim()) return;
+    setMode('iris');
+    onAskIris(value.trim());
+    setOpen(false);
+  };
+
+  const switchTo = (m: 'search' | 'iris') => {
+    setMode(m);
+    if (m === 'iris') setOpen(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const showDropdown = open && isSearch;
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        background: '#fff',
+        border: '1.5px solid #d0d0d8',
+        borderRadius: showDropdown ? '20px 20px 0 0' : 20,
+        paddingLeft: 16, paddingRight: 4, height: 36,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        gap: 0, transition: 'border-radius 150ms',
+      }}>
+        <Icon name="search" size={15} color="#9292a0" style={{ flexShrink: 0, marginRight: 10 }} />
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={e => { setValue(e.target.value); if (isSearch) setOpen(true); }}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              if (isIris) fireIris();
+              else if (e.altKey) fireIris();
+              else fireSearch();
+            } else if (e.key === 'Escape') { setOpen(false); }
+          }}
+          placeholder={isIris ? 'Ask Iris about your agreements...' : 'Search agreements, or ask Iris…'}
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit', minWidth: 0 }}
+        />
+        {value && (
+          <button
+            onMouseDown={e => { e.preventDefault(); setValue(''); inputRef.current?.focus(); }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 99, border: 'none', background: '#e8e8ed', cursor: 'pointer', padding: 0, flexShrink: 0, marginRight: 4, transition: 'background 100ms' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#d8d8df')}
+            onMouseLeave={e => (e.currentTarget.style.background = '#e8e8ed')}
+            title="Clear search"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 1.5L8.5 8.5M8.5 1.5L1.5 8.5" stroke="#555565" strokeWidth="1.6" strokeLinecap="round"/></svg>
+          </button>
+        )}
+        {/* Coupled Search + Ask Iris pill — shared outer border, labels collapse to icons on input */}
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          border: '1px solid rgba(0,0,0,0.13)',
+          borderRadius: 99,
+          background: 'rgba(0,0,0,0.02)',
+          padding: 2, gap: 1,
+          flexShrink: 0, marginLeft: 6, marginRight: 2,
+        }}>
+          <button
+            onMouseDown={e => { e.preventDefault(); switchTo('search'); if (isSearch && value.trim()) fireSearch(); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: value ? 0 : 5,
+              padding: value ? '4px 7px' : '4px 10px',
+              borderRadius: 99, border: 'none',
+              background: isSearch ? '#fff' : 'transparent',
+              boxShadow: isSearch ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+              cursor: 'pointer', fontFamily: 'inherit',
+              color: 'var(--ink-text-primary)',
+              fontSize: 12, fontWeight: isSearch ? 600 : 400,
+              transition: 'all 150ms',
+            }}
+          >
+            <Icon name="search" size={13} color="var(--ink-text-primary)" />
+            {!value && 'Search'}
+          </button>
+          <button
+            onMouseDown={e => { e.preventDefault(); switchTo('iris'); if (isIris && value.trim()) fireIris(); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: value ? 0 : 5,
+              padding: value ? '4px 7px' : '4px 10px',
+              borderRadius: 99, border: 'none',
+              background: isIris ? '#fff' : 'transparent',
+              boxShadow: isIris ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+              cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: 12, fontWeight: isIris ? 600 : 400,
+              transition: 'all 150ms',
+            }}
+          >
+            <span style={{ display: 'flex', width: 13, height: 13, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}><IrisIcon /></span>
+            {!value && <span style={{ color: isIris ? '#4B47C8' : 'var(--ink-text-primary)' }}>Ask Iris</span>}
+          </button>
+        </div>
+      </div>
+      {/* Dropdown */}
+      {showDropdown && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1.5px solid #d0d0d8', borderTop: '1px solid #ebebef', borderRadius: '0 0 20px 20px', boxShadow: '0 12px 32px rgba(0,0,0,0.10)', zIndex: 9999, overflow: 'hidden' }}>
+
+          {/* ── EMPTY STATE ── */}
+          {!q && <>
+            {/* Saved Searches header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px 10px' }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 2h9v10.5l-4.5-3.15L2.5 12.5V2z" stroke="#6b6b7e" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-text-primary)' }}>Saved Searches <span style={{ fontWeight: 400, color: '#9292a0' }}>(6)</span></span>
+            </div>
+            <div style={{ height: 1, background: '#ebebef', margin: '0 18px' }} />
+            {matchedSaved.map(s => (
+              <div key={s}
+                onMouseEnter={() => setHov(`sv-${s}`)} onMouseLeave={() => setHov(null)}
+                onMouseDown={e => { e.preventDefault(); setValue(s); setOpen(false); inputRef.current?.focus(); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', cursor: 'pointer', background: hov === `sv-${s}` ? '#f2f2f6' : 'transparent', transition: 'background 80ms' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#9292a0" strokeWidth="1.3"/><path d="M7 4.5V7l2 1.5" stroke="#9292a0" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <span style={{ flex: 1, fontSize: 13, color: 'var(--ink-text-primary)' }}>{s}</span>
+                <button onMouseDown={e => { e.stopPropagation(); e.preventDefault(); setDismissedSaved(prev => new Set([...prev, s])); }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 5, border: 'none', background: '#ebebef', cursor: 'pointer', padding: 0, flexShrink: 0, transition: 'background 80ms' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#d8d8df')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#ebebef')}
+                ><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 1.5L8.5 8.5M8.5 1.5L1.5 8.5" stroke="#555565" strokeWidth="1.6" strokeLinecap="round"/></svg></button>
+              </div>
+            ))}
+            <div
+              onMouseDown={e => { e.preventDefault(); }}
+              style={{ padding: '6px 18px 12px', cursor: 'pointer' }}
+            >
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-text-primary)', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 2 }}>Clear search history</span>
+            </div>
+            <div style={{ height: 1, background: '#ebebef', margin: '0 18px' }} />
+            <div style={{ padding: '12px 18px 6px', fontSize: 11, fontWeight: 700, color: '#9292a0', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Get quick answers</div>
+            {(['How many renewal/non-renewal notifications should I expect in the next 90 days, and who are the parties?'] as const).map((qa, i) => (
+              <div key={qa}
+                onMouseEnter={() => setHov(`qs-${i}`)} onMouseLeave={() => setHov(null)}
+                onMouseDown={e => { e.preventDefault(); setValue(qa); setMode('iris'); onAskIris(qa); setOpen(false); }}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '9px 18px 11px', cursor: 'pointer', background: hov === `qs-${i}` ? '#f2f2f6' : 'transparent', transition: 'background 80ms' }}
+              >
+                <span style={{ display: 'flex', width: 14, height: 14, flexShrink: 0, marginTop: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}><IrisIcon /></span>
+                <span style={{ fontSize: 13, color: '#5c3fd1', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 2 }}>{qa}</span>
+              </div>
+            ))}
+            <div style={{ height: 1, background: '#ebebef', margin: '0 18px' }} />
+            <div style={{ padding: '12px 18px 6px', fontSize: 11, fontWeight: 700, color: '#9292a0', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Documents</div>
+            {EMPTY_STATE_DOCS.map(d => (
+              <div key={d.name}
+                onMouseEnter={() => setHov(`ds-${d.name}`)} onMouseLeave={() => setHov(null)}
+                onMouseDown={e => { e.preventDefault(); setValue(d.name); setOpen(false); }}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '9px 18px', cursor: 'pointer', background: hov === `ds-${d.name}` ? '#f2f2f6' : 'transparent', transition: 'background 80ms' }}
+              >
+                <svg style={{ flexShrink: 0, marginTop: 1 }} width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2.5" y="1" width="9" height="11.5" rx="1.5" stroke="#9292a0" strokeWidth="1.3"/><path d="M4.5 4.5h5M4.5 7h5M4.5 9.5h3" stroke="#9292a0" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--ink-text-primary)' }}>{d.name}</div>
+                  <div style={{ fontSize: 12, color: '#9292a0' }}>{d.sub}</div>
+                </div>
+              </div>
+            ))}
+          </>}
+
+          {/* ── TYPED STATE ── */}
+          {q && <>
+            {matchedSaved.map(s => (
+              <div key={s}
+                onMouseEnter={() => setHov(`sv-${s}`)} onMouseLeave={() => setHov(null)}
+                onMouseDown={e => { e.preventDefault(); setValue(s); setOpen(false); inputRef.current?.focus(); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', cursor: 'pointer', background: hov === `sv-${s}` ? '#f2f2f6' : 'transparent', transition: 'background 80ms' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#9292a0" strokeWidth="1.3"/><path d="M7 4.5V7l2 1.5" stroke="#9292a0" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <span style={{ flex: 1, fontSize: 13, color: 'var(--ink-text-primary)' }}>{boldMatch(s, q)}</span>
+                <button onMouseDown={e => { e.stopPropagation(); e.preventDefault(); setDismissedSaved(prev => new Set([...prev, s])); }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 5, border: 'none', background: '#ebebef', cursor: 'pointer', padding: 0, flexShrink: 0, transition: 'background 80ms' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#d8d8df')}
+                  onMouseLeave={e => (e.currentTarget.style.background = '#ebebef')}
+                ><svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 1.5L8.5 8.5M8.5 1.5L1.5 8.5" stroke="#555565" strokeWidth="1.6" strokeLinecap="round"/></svg></button>
+              </div>
+            ))}
+            {matchedEntities.length > 0 && <>
+              <div style={{ height: 1, background: '#ebebef', margin: '4px 18px' }} />
+              <div style={{ padding: '10px 18px 6px', fontSize: 11, fontWeight: 700, color: '#9292a0', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Filter by</div>
+              {matchedEntities.map(e => (
+                <div key={e.name}
+                  onMouseEnter={() => setHov(`fe-${e.name}`)} onMouseLeave={() => setHov(null)}
+                  onMouseDown={ev => { ev.preventDefault(); setValue(e.name); setOpen(false); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 18px', cursor: 'pointer', background: hov === `fe-${e.name}` ? '#f2f2f6' : 'transparent', transition: 'background 80ms' }}
+                >
+                  {e.type === 'Agreement Set'
+                    ? <svg style={{ flexShrink: 0 }} width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 5.5l5-3 5 3-5 3-5-3z" stroke="#9292a0" strokeWidth="1.3" strokeLinejoin="round"/><path d="M2 8.5l5 3 5-3" stroke="#9292a0" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+                    : <svg style={{ flexShrink: 0 }} width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="1" stroke="#9292a0" strokeWidth="1.3"/><path d="M5 12V8h4v4" stroke="#9292a0" strokeWidth="1.3" strokeLinejoin="round"/><rect x="4" y="4" width="2" height="2" rx="0.3" stroke="#9292a0" strokeWidth="1.1"/><rect x="8" y="4" width="2" height="2" rx="0.3" stroke="#9292a0" strokeWidth="1.1"/></svg>
+                  }
+                  <div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-text-primary)' }}>{boldMatch(e.name, q)}</div>
+                    <div style={{ fontSize: 12, color: '#9292a0' }}>{e.type}</div>
+                  </div>
+                </div>
+              ))}
+            </>}
+            {matchedDocs.length > 0 && <>
+              <div style={{ height: 1, background: '#ebebef', margin: '4px 18px' }} />
+              <div style={{ padding: '10px 18px 6px', fontSize: 11, fontWeight: 700, color: '#9292a0', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Suggested Searches</div>
+              {matchedDocs.map(d => (
+                <div key={d.name}
+                  onMouseEnter={() => setHov(`dm-${d.name}`)} onMouseLeave={() => setHov(null)}
+                  onMouseDown={ev => { ev.preventDefault(); setValue(d.name.replace(/\.docx?$/, '')); setOpen(false); }}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '9px 18px', cursor: 'pointer', background: hov === `dm-${d.name}` ? '#f2f2f6' : 'transparent', transition: 'background 80ms' }}
+                >
+                  <svg style={{ flexShrink: 0, marginTop: 1 }} width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H5.5M11 3V8.5" stroke="#9292a0" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-text-primary)' }}>{boldMatch(d.name, q)}</div>
+                    <div style={{ fontSize: 12, color: '#9292a0' }}>{d.sub}</div>
+                  </div>
+                </div>
+              ))}
+            </>}
+            {dynamicQuickAnswers.length > 0 && <>
+              <div style={{ height: 1, background: '#ebebef', margin: '4px 18px' }} />
+              <div style={{ padding: '10px 18px 6px', fontSize: 11, fontWeight: 700, color: '#9292a0', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Get quick answers</div>
+              {dynamicQuickAnswers.map((qa, i) => (
+                <div key={qa}
+                  onMouseEnter={() => setHov(`qa-${i}`)} onMouseLeave={() => setHov(null)}
+                  onMouseDown={e => { e.preventDefault(); setValue(qa); setMode('iris'); onAskIris(qa); setOpen(false); }}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '9px 18px', cursor: 'pointer', background: hov === `qa-${i}` ? '#f2f2f6' : 'transparent', transition: 'background 80ms' }}
+                >
+                  <span style={{ display: 'flex', width: 14, height: 14, flexShrink: 0, marginTop: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}><IrisIcon /></span>
+                  <span style={{ fontSize: 13, color: '#5c3fd1', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 2 }}>{boldMatch(qa, q)}</span>
+                </div>
+              ))}
+            </>}
+            <div style={{ height: 1, background: '#ebebef', margin: '4px 18px' }} />
+            <div
+              onMouseEnter={() => setHov('view-all')} onMouseLeave={() => setHov(null)}
+              onMouseDown={e => { e.preventDefault(); fireSearch(); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 18px 12px', cursor: 'pointer', background: hov === 'view-all' ? '#f2f2f6' : 'transparent', transition: 'background 80ms' }}
+            >
+              <Icon name="search" size={13} color="#9292a0" />
+              <span style={{ fontSize: 13, color: 'var(--ink-text-primary)' }}>View all results for <strong>{value.trim()}</strong></span>
+            </div>
+          </>}
+
+          {/* ── FOOTER: Ask Iris + Search ── */}
+          <div style={{ borderTop: '1px solid #e8e8ec', padding: '10px 14px', background: '#f8f8fb', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              onMouseDown={e => { e.preventDefault(); fireIris(); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 14px', borderRadius: 99, border: '1.5px solid #d4c8f7', background: '#f3f0fd', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, transition: 'background 100ms' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#ebe6fa')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#f3f0fd')}
+            >
+              <span style={{ display: 'flex', width: 13, height: 13, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}><IrisIcon /></span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#5c3fd1' }}>Ask Iris</span>
+            </button>
+            <span style={{ fontSize: 12, color: '#9292a0', flexShrink: 0 }}>Option+Enter</span>
+            <div style={{ flex: 1 }} />
+            <button
+              onMouseDown={e => { e.preventDefault(); fireSearch(); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 99, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', boxShadow: '0 2px 6px rgba(37,99,235,0.22)', transition: 'opacity 100ms', flexShrink: 0 }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            >
+              <Icon name="search" size={12} color="#fff" />
+              Search
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   Full Screen Iris Chat
+   ═══════════════════════════════════════ */
+
+const FS_STEPS: Record<string, { label: string; sub: string }[]> = {
+  fs_deep: [
+    { label: 'Searching agreements', sub: 'Looking for Acme contracts' },
+    { label: 'Reading documents', sub: '4 documents found' },
+    { label: 'Extracting product data', sub: 'Identifying products and services' },
+  ],
+  fs_spend: [
+    { label: 'Analyzing agreement data', sub: 'Reading all vendor agreements' },
+    { label: 'Grouping by category', sub: 'Sorting vendors by spend category' },
+    { label: 'Calculating totals', sub: '47 agreements analyzed' },
+  ],
+};
+
+const FS_CHIP_STEPS: Record<string, { label: string; sub: string }[]> = {
+  'Show me pricing and licensing terms': [
+    { label: 'Reviewing pricing sections', sub: 'Reading Acme MSA and Order Forms' },
+    { label: 'Extracting license terms', sub: 'Found 3 pricing tiers' },
+  ],
+  'Flag any price escalation clauses': [
+    { label: 'Scanning for escalation clauses', sub: 'Checking all Acme agreements' },
+    { label: 'Analyzing clause language', sub: '2 clauses identified' },
+  ],
+  'Build a pricing comparison table': [
+    { label: 'Comparing pricing structures', sub: 'Analyzing across 4 agreements' },
+    { label: 'Organizing extracted data', sub: 'Building comparison table' },
+  ],
+  'Build a spend report': [
+    { label: 'Aggregating spend data', sub: 'Processing 47 vendor agreements' },
+    { label: 'Preparing visualization', sub: 'Structuring report layout' },
+  ],
+};
+
+function CopyCSVButton({ data }: { data: string[][] }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button onClick={() => {
+      const csv = data.map(row => row.map(c => `"${c}"`).join(',')).join('\n');
+      navigator.clipboard.writeText(csv).catch(() => {});
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
+    }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 500, color: 'var(--ink-text-primary)', fontFamily: 'inherit', marginTop: 6 }}>
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="3" y="1" width="8" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><path d="M5 1V0.5H9V1" stroke="currentColor" strokeWidth="1.3"/><rect x="1" y="3" width="8" height="10" rx="1.5" fill="white" stroke="currentColor" strokeWidth="1.3"/><path d="M3.5 6.5h5M3.5 8.5h3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+      {copied ? 'Copied!' : 'Copy CSV'}
+    </button>
+  );
+}
+
+function FsAgenticSteps({ steps, revealed, collapsed, onToggleCollapse }: { steps: { label: string; sub: string }[]; revealed: number; collapsed?: boolean; onToggleCollapse?: () => void }) {
+  const ICONS: Record<number, React.ReactNode> = {
+    0: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="#6B6B8A" strokeWidth="1.3"/><path d="M7 4.5v3l1.5 1" stroke="#6B6B8A" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+    1: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="#6B6B8A" strokeWidth="1.3"/><path d="M9.5 9.5l2.5 2.5" stroke="#6B6B8A" strokeWidth="1.3" strokeLinecap="round"/></svg>,
+    2: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="1.5" stroke="#6B6B8A" strokeWidth="1.3"/><path d="M4 5h6M4 7h4" stroke="#6B6B8A" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+    3: <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 11l3-3 2 2 5-5" stroke="#6B6B8A" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  };
+  if (collapsed && revealed >= steps.length) {
+    return (
+      <button onClick={onToggleCollapse} className="fs-step-in" style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '0 0 14px', fontFamily: 'inherit' }}>
+        <span style={{ fontSize: 13, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>{steps.length} actions completed</span>
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ color: 'var(--ink-text-secondary)' }}><path d="M2.5 4.5l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      </button>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {steps.slice(0, revealed).map((s, i) => (
+        <div key={i} className="fs-step-in" style={{ paddingBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <span style={{ color: '#6B6B8A', flexShrink: 0 }}>{ICONS[i % 4]}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a2e' }}>{s.label}</span>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ color: '#bbb', flexShrink: 0 }}><path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <div style={{ paddingLeft: 22, fontSize: 12.5, color: '#6B6B8A' }}>{s.sub}</div>
+        </div>
+      ))}
+      {revealed < steps.length && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingTop: 2 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[0,1,2].map(i => <span key={i} className="iris-thinking-dot" style={{ animationDelay: `${i * 0.18}s` }} />)}
+          </div>
+          <span style={{ fontSize: 12, color: '#9999aa' }}>{steps[revealed]?.label}…</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* shared sidebar-style chip button */
+function FsChip({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="chip-fade-in" style={{
+      display: 'flex', width: '100%', alignItems: 'center', gap: 8,
+      background: '#fff', border: '1px solid var(--ink-border-color-default)',
+      borderRadius: 100, padding: '8px 14px', cursor: 'pointer', fontSize: 13,
+      fontFamily: 'inherit', color: 'var(--ink-text-primary)', textAlign: 'left' as const,
+      maxWidth: 420, transition: 'background 0.12s, border-color 0.12s',
+    }}
+    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-5, #f5f3ff)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #ddd9ff)'; }}
+    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
+    >
+      <Icon name="reply" size={13} color="var(--ink-purple-100, #4B47C8)" style={{ flexShrink: 0 }} />
+      {label}
+    </button>
+  );
+}
+
+/* IrisSparkleIcon — Iris bloom icon */
+function IrisSparkleIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5.39143 3.21709C4.66395 2.31986 3.57272 1.87528 1.73785 1.50346C1.72168 1.50346 1.7136 1.50346 1.69743 1.50346C1.64085 1.50346 1.58427 1.52771 1.54385 1.57621C1.50344 1.62471 1.48727 1.68129 1.50344 1.73787C1.87526 3.57274 2.32792 4.67205 3.21706 5.39145C4.13046 4.80946 4.81753 4.1224 5.39951 3.209L5.39143 3.21709Z" fill="#CBC2FF"/>
+      <path d="M10.7906 5.39146C11.6878 4.66398 12.1324 3.57275 12.5042 1.73788C12.5204 1.6813 12.5042 1.61663 12.4638 1.56813C12.4234 1.51963 12.3668 1.49538 12.3102 1.49538C12.2941 1.49538 12.286 1.49538 12.2698 1.49538C10.435 1.86721 9.33564 2.31986 8.60816 3.20901C9.19015 4.12241 9.87721 4.80947 10.7906 5.39146Z" fill="#CBC2FF"/>
+      <path d="M3.21706 8.60854C2.31984 9.33602 1.87526 10.4272 1.50344 12.2621C1.48727 12.3187 1.50344 12.3834 1.54385 12.4319C1.59235 12.4884 1.6651 12.5208 1.73785 12.5046C3.57272 12.1328 4.67203 11.6801 5.39143 10.791C4.80944 9.87759 4.12238 9.19053 3.20898 8.60854H3.21706Z" fill="#CBC2FF"/>
+      <path d="M8.60854 10.791C9.33602 11.6882 10.4272 12.1328 12.2621 12.5046C12.3349 12.5208 12.4076 12.4884 12.4561 12.4319C12.4965 12.3834 12.5127 12.3268 12.4965 12.2621C12.1247 10.4272 11.6721 9.32794 10.7829 8.60854C9.86951 9.19053 9.18245 9.87759 8.60046 10.791H8.60854Z" fill="#CBC2FF"/>
+      <path d="M13.6197 6.45843C12.4638 6.03003 11.607 5.63395 10.9199 5.18938C10.0308 4.62356 9.38414 3.97691 8.81832 3.08776C8.38183 2.4007 7.97768 1.5358 7.54927 0.387994C7.46844 0.153583 7.25019 0.00808674 7.0077 0.00808674C6.76521 0.00808674 6.54696 0.153583 6.46613 0.387994C6.03772 1.54388 5.64165 2.4007 5.19708 3.08776C4.63126 3.97691 3.97652 4.62356 3.08738 5.18938C2.40031 5.62587 1.53541 6.03003 0.387608 6.45843C0.153197 6.53926 0.00770082 6.75751 0.00770082 7C0.00770082 7.2425 0.153197 7.46074 0.387608 7.54157C1.5435 7.9619 2.40031 8.36605 3.08738 8.81063C3.97652 9.37645 4.62317 10.0231 5.19708 10.9122C5.63357 11.6074 6.03772 12.4642 6.46613 13.612C6.55504 13.8464 6.76521 13.9919 7.0077 13.9919C7.25019 13.9919 7.46844 13.8383 7.54927 13.612C7.97768 12.4561 8.37375 11.5993 8.81832 10.9122C9.38414 10.0231 10.0308 9.37645 10.9199 8.81063C11.6151 8.37414 12.4719 7.96998 13.6197 7.54157C13.8541 7.45266 13.9996 7.2425 13.9996 7C13.9996 6.75751 13.846 6.53926 13.6197 6.45843ZM10.1116 7.08892C8.31717 7.72749 7.7271 8.31756 7.08853 10.112C7.0562 10.1928 6.93495 10.1928 6.9107 10.112C6.27213 8.31756 5.68207 7.72749 3.88761 7.08892C3.80678 7.05659 3.80678 6.93534 3.88761 6.91109C5.68207 6.27252 6.27213 5.68245 6.9107 3.88799C6.94304 3.79908 7.06428 3.79908 7.08853 3.88799C7.7271 5.68245 8.31717 6.27252 10.1116 6.91109C10.1925 6.94342 10.1925 7.06467 10.1116 7.08892Z" fill="url(#irisGradient)"/>
+      <defs>
+        <linearGradient id="irisGradient" x1="0.0306558" y1="7" x2="14.028" y2="7" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#D9155D"/>
+          <stop offset="0.501049" stopColor="#A02AAC"/>
+          <stop offset="1" stopColor="#4C06FF"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  );
+}
+
+type FsPhase = 'thinking' | 'answer' | 'chip-thinking' | 'chip-answered' | 'confirm-thinking' | 'confirm-answered' | 'building' | 'built';
+
+function FullScreenIrisChat({
+  flowId, query, onClose, onCollapse, onBuildWorksheet, onBuildReport, skipThinking,
+}: {
+  flowId: 'fs_deep' | 'fs_spend';
+  query: string;
+  onClose: () => void;
+  onCollapse: () => void;
+  onBuildWorksheet: (type: string) => void;
+  onBuildReport: (measure: string, groupBy: string) => void;
+  skipThinking?: boolean;
+}) {
+  const [animClass, setAnimClass] = useState('iris-fs-enter');
+  const steps = FS_STEPS[flowId] || [];
+  const [stepsRevealed, setStepsRevealed] = useState(skipThinking ? steps.length : 0);
+  const [phase, setPhase] = useState<FsPhase>(skipThinking ? 'answer' : 'thinking');
+  const [stepsCollapsed, setStepsCollapsed] = useState(!!skipThinking);
+  const [chipStepsCollapsed, setChipStepsCollapsed] = useState(false);
+  const [selectedChip, setSelectedChip] = useState('');
+  const [chipStepsRevealed, setChipStepsRevealed] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  /* initial agentic steps → answer */
+  useEffect(() => {
+    if (skipThinking) return;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    steps.forEach((_, i) => {
+      timers.push(setTimeout(() => setStepsRevealed(i + 1), 600 + i * 850));
+    });
+    timers.push(setTimeout(() => { setPhase('answer'); setStepsCollapsed(true); }, 600 + steps.length * 850 + 300));
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  /* chip → chip-thinking → chip-answered */
+  useEffect(() => {
+    if (phase !== 'chip-thinking' || !selectedChip) return;
+    const cs = FS_CHIP_STEPS[selectedChip] || [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    cs.forEach((_, i) => {
+      timers.push(setTimeout(() => setChipStepsRevealed(i + 1), 400 + i * 800));
+    });
+    timers.push(setTimeout(() => { setPhase('chip-answered'); setChipStepsCollapsed(true); }, 400 + cs.length * 800 + 350));
+    return () => timers.forEach(clearTimeout);
+  }, [phase, selectedChip]);
+
+  /* confirm-thinking → confirm-answered */
+  useEffect(() => {
+    if (phase !== 'confirm-thinking') return;
+    const t = setTimeout(() => setPhase('confirm-answered'), 1200);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  /* building → built → fire callback */
+  useEffect(() => {
+    if (phase !== 'building') return;
+    const t = setTimeout(() => setPhase('built'), 1600);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 'built') return;
+    const t = setTimeout(() => {
+      if (selectedChip === 'Build a pricing comparison table' || selectedChip === 'Show me pricing and licensing terms') {
+        handleExit(() => onBuildWorksheet('deep-analysis'));
+      } else {
+        handleExit(() => onBuildReport('Annual Contract Value', 'By Vendor Category'));
+      }
+    }, 2200);
+    return () => clearTimeout(t);
+  }, [phase]);
+
+  useEffect(() => {
+    if (contentRef.current) {
+      setTimeout(() => { if (contentRef.current) contentRef.current.scrollTop = contentRef.current.scrollHeight; }, 60);
+    }
+  }, [stepsRevealed, phase, chipStepsRevealed]);
+
+  const handleExit = (after?: () => void) => {
+    setAnimClass('iris-fs-exit');
+    setTimeout(() => { onClose(); after?.(); }, 240);
+  };
+
+  const handleCollapse = () => {
+    setAnimClass('iris-fs-exit');
+    setTimeout(onCollapse, 240);
+  };
+
+  const handleChipClick = (chip: string) => {
+    setSelectedChip(chip);
+    setChipStepsRevealed(0);
+    setPhase('chip-thinking');
+  };
+
+  const handleConfirm = () => setPhase('confirm-thinking');
+  const handleBuild = () => setPhase('building');
+
+  const CHIPS_DEEP = ['Show me pricing and licensing terms', 'Flag any price escalation clauses', 'Build a pricing comparison table'];
+  const CHIPS_SPEND = ['Break down by sub-category', 'Show me top 5 vendors', 'Build a spend report'];
+  const chips = flowId === 'fs_deep' ? CHIPS_DEEP : CHIPS_SPEND;
+
+  const isPricingTermsPath = selectedChip === 'Show me pricing and licensing terms';
+  const isFlagEscalationPath = selectedChip === 'Flag any price escalation clauses';
+  const isPricingTablePath = selectedChip === 'Build a pricing comparison table';
+  const isReportPath = selectedChip === 'Build a spend report';
+
+  return (
+    <div className={animClass} style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', flexDirection: 'column', background: '#F5F3F0',
+    }}>
+      {/* ── Header bar ── */}
+      <div style={{ height: 48, borderBottom: '1px solid var(--ink-border-color-subtle)', background: '#fff', display: 'flex', alignItems: 'center', padding: '0 12px', gap: 4, flexShrink: 0 }}>
+        <IconButton icon="menu" variant="tertiary" size="small" aria-label="Menu" />
+        <button style={{ display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 6, padding: '4px 8px' }}>
+          <IrisSparkleIcon size={15} />
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-text-primary)' }}>Iris</span>
+          <Icon name="chevron-down" size={14} color="var(--ink-text-secondary)" />
+        </button>
+        <div style={{ flex: 1 }} />
+        <IconButton icon="arrows-in" variant="tertiary" size="small" aria-label="Collapse to side panel" onClick={handleCollapse} />
+        <IconButton icon="close" variant="tertiary" size="small" aria-label="Close" onClick={() => handleExit()} />
+      </div>
+
+      {/* Scrollable content */}
+      <div ref={contentRef} style={{ flex: 1, overflowY: 'auto', padding: '32px 24px 16px' }}>
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          {/* User bubble */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 28 }}>
+            <div style={{ background: '#EEEAE5', borderRadius: '16px 4px 16px 16px', padding: '10px 16px', maxWidth: '72%', fontSize: 14, color: '#1a1a2e', fontWeight: 500, lineHeight: 1.5 }}>
+              {query}
+            </div>
+          </div>
+
+          {/* Iris label */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+            <IrisSparkleIcon size={14} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+          </div>
+
+          {/* Agentic steps */}
+          <FsAgenticSteps steps={steps} revealed={stepsRevealed} collapsed={stepsCollapsed} onToggleCollapse={() => setStepsCollapsed(c => !c)} />
+
+          {/* ── Answer area ── */}
+          {phase !== 'thinking' && (
+            <div className="fs-answer-in">
+              {flowId === 'fs_deep' ? (
+                /* ── Deep flow ── */
+                <div>
+                  {/* Iris answer */}
+                  <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)', marginBottom: 10 }}>
+                    Across your <strong>10 Acme agreements</strong>, you purchase <strong>3 categories</strong> of products and services: <strong>Cloud storage &amp; hosting</strong> (10 agreements, volume-tiered pricing), <strong>Managed IT support</strong> (8 agreements, flat fee), and <strong>Professional services</strong> (5 agreements, time &amp; materials). Total committed spend is <strong>$225K/yr</strong>.
+                  </div>
+                  <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+                    <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--ink-border-color-subtle)', background: 'var(--ink-neutral-fade-05, #f7f7f9)' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Products &amp; services found</span>
+                    </div>
+                    {[
+                      { label: 'Cloud storage & hosting', count: 10, models: 'Volume-tiered' },
+                      { label: 'Managed IT support', count: 8, models: 'Flat fee, volume-tiered' },
+                      { label: 'Professional services', count: 5, models: 'Time & materials' },
+                    ].map((cat, i) => (
+                      <div key={cat.label} style={{ padding: '9px 14px', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)' }}>{cat.label}</div>
+                          <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>{cat.models}</div>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-text-secondary)', background: 'var(--ink-neutral-fade-10, #f1f1f4)', borderRadius: 100, padding: '2px 8px' }}>{cat.count}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <CopyCSVButton data={[['Category','Agreements','Pricing models'],['Cloud storage & hosting','10','Volume-tiered'],['Managed IT support','8','Flat fee, volume-tiered'],['Professional services','5','Time & materials']]} />
+
+                  {/* initial chips */}
+                  {phase === 'answer' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 14 }}>
+                      {chips.map(c => <FsChip key={c} label={c} onClick={() => handleChipClick(c)} />)}
+                    </div>
+                  )}
+
+                  {/* selected chip bubble */}
+                  {selectedChip && phase !== 'answer' && (
+                    <div style={{ marginTop: 20 }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
+                        <div style={{ background: '#EEEAE5', borderRadius: '16px 4px 16px 16px', padding: '8px 14px', fontSize: 13.5, color: '#1a1a2e', fontWeight: 500 }}>{selectedChip}</div>
+                      </div>
+                      {/* chip agentic steps */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                        <IrisSparkleIcon size={14} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+                      </div>
+                      <FsAgenticSteps steps={FS_CHIP_STEPS[selectedChip] || []} revealed={chipStepsRevealed} collapsed={chipStepsCollapsed} onToggleCollapse={() => setChipStepsCollapsed(c => !c)} />
+
+                      {/* chip-answered: Iris follow-up question */}
+                      {(phase === 'chip-answered' || phase === 'confirm-thinking' || phase === 'confirm-answered' || phase === 'building') && (
+                        <div className="fs-answer-in">
+                          {isPricingTablePath && (
+                            <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)', marginBottom: 12 }}>
+                              Want me to build a side-by-side comparison of pricing terms across all 10 agreements?
+                            </div>
+                          )}
+                          {isPricingTermsPath && (
+                            <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)', marginBottom: 12 }}>
+                              To surface all pricing and licensing terms accurately, I'll need to run a structured analysis across your 10 Acme agreements. Would you like me to do that?
+                            </div>
+                          )}
+                          {isFlagEscalationPath && phase === 'chip-answered' && (
+                            <div>
+                              <div style={{ fontSize: 14, color: 'var(--ink-text-primary)', marginBottom: 14, lineHeight: 1.7 }}>Found <strong>1 of 10 agreements</strong> with a price escalation clause. The rest have fixed pricing or no escalation language.</div>
+                              {[
+                                { doc: 'Acme Order Form (2024)', clause: 'No price cap — vendor may reprice at renewal with 30-day notice', status: 'At Risk', color: '#d97706', bg: '#fffbeb' },
+                              ].map((item, i) => (
+                                <div key={i} style={{ border: `1px solid ${item.color}30`, borderRadius: 10, padding: '12px 14px', marginBottom: 12, background: item.bg }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                    <span style={{ fontSize: 12.5, fontWeight: 700, color: '#1a1a2e' }}>{item.doc}</span>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: item.color, padding: '2px 9px', borderRadius: 99, background: `${item.color}18` }}>{item.status}</span>
+                                  </div>
+                                  <div style={{ fontSize: 13, color: '#4a4a5a', lineHeight: 1.6 }}>{item.clause}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* confirm chip */}
+                          {(isPricingTablePath || isPricingTermsPath) && phase === 'chip-answered' && (
+                            <FsChip label={isPricingTablePath ? 'Yes, build it' : 'Yes, set it up'} onClick={handleConfirm} />
+                          )}
+
+                          {/* confirm thinking */}
+                          {(isPricingTablePath || isPricingTermsPath) && phase === 'confirm-thinking' && (
+                            <div style={{ display: 'flex', gap: 4, paddingTop: 4 }}>
+                              {[0,1,2].map(i => <span key={i} className="iris-thinking-dot" style={{ animationDelay: `${i * 0.18}s` }} />)}
+                            </div>
+                          )}
+
+                          {/* worksheet proposal */}
+                          {(isPricingTablePath || isPricingTermsPath) && (phase === 'confirm-answered' || phase === 'building') && (
+                            <div className="fs-answer-in">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                                <IrisSparkleIcon size={14} />
+                                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+                              </div>
+                              <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)', marginBottom: 12 }}>
+                                {isPricingTermsPath
+                                  ? <>I'll set that up now. I'll create a worksheet titled <strong>Acme Products &amp; Pricing Breakdown</strong> that extracts each contract's service, pricing basis, unit price, and any special licensing terms. Here's what I'll pull:</>
+                                  : <>I'll set that up now. I'll extract the key commercial terms from each of your 10 Acme agreements into a structured comparison worksheet. Here's what I'll pull:</>
+                                }
+                              </div>
+                              <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>What I'll extract</div>
+                                {[
+                                  { label: 'Agreement name', ai: false }, { label: 'Effective date', ai: false }, { label: 'End date', ai: false }, { label: 'Total contract value', ai: false },
+                                  { label: 'Service / Offering', ai: true }, { label: 'Pricing basis', ai: true }, { label: 'Unit price', ai: true }, { label: 'Discounts & special terms', ai: true },
+                                ].map((col, i) => (
+                                  <div key={col.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke={col.ai ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-secondary)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                    <span style={{ flex: 1, fontSize: 12.5, color: 'var(--ink-text-primary)' }}>{col.label}</span>
+                                    {col.ai && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)', background: 'var(--ink-purple-05, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', borderRadius: 100, padding: '1px 7px' }}>AI</span>}
+                                  </div>
+                                ))}
+                              </div>
+                              {phase === 'confirm-answered' && (
+                                <button onClick={handleBuild} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 4 }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#3d39b0'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="2" y="1" width="10" height="12" rx="1.5" stroke="#fff" strokeWidth="1.3"/><path d="M4 4h6M4 7h6M4 10h3" stroke="#fff" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                                  Start analysis
+                                </button>
+                              )}
+                              {phase === 'building' && (
+                                <div className="fs-step-in" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'rgba(107,71,200,0.06)', borderRadius: 8 }}>
+                                  <div style={{ display: 'flex', gap: 4 }}>
+                                    {[0,1,2].map(i => <span key={i} className="iris-thinking-dot" style={{ animationDelay: `${i * 0.18}s` }} />)}
+                                  </div>
+                                  <span style={{ fontSize: 13, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500 }}>Building your worksheet…</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* ── Spend flow ── */
+                <div>
+                  <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)', marginBottom: 14 }}>
+                    Your committed spend totals <strong>$2.4M/yr</strong> across <strong>6 vendor categories</strong>. Software accounts for 58% of total spend, followed by Professional Services at 22%.
+                  </div>
+                  <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+                    {[['Category', 'Spend', 'Agreements', 'YoY'],
+                      ['Software', '$1.39M', '18', '+12%'],
+                      ['Professional Services', '$528K', '9', '+4%'],
+                      ['Infrastructure', '$264K', '7', '−2%'],
+                      ['Legal & Compliance', '$144K', '6', '+8%'],
+                      ['Marketing Tools', '$72K', '5', '+19%'],
+                      ['Other', '$48K', '2', '—'],
+                    ].map((row, i) => (
+                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 0.8fr', padding: '9px 14px', borderBottom: i < 6 ? '1px solid var(--ink-border-color-subtle)' : 'none', background: i === 0 ? 'var(--ink-neutral-fade-05, #f7f7f9)' : 'white', fontSize: i === 0 ? 11.5 : 13, fontWeight: i === 0 ? 700 : 400, color: i === 0 ? 'var(--ink-text-secondary)' : 'var(--ink-text-primary)' }}>
+                        {row.map((cell, j) => <span key={j} style={{ color: j === 3 && i > 0 ? (cell.startsWith('+') ? '#1a7a4a' : cell.startsWith('−') ? '#d97706' : 'var(--ink-text-secondary)') : undefined, fontWeight: j === 3 && i > 0 && cell !== '—' ? 600 : undefined }}>{cell}</span>)}
+                      </div>
+                    ))}
+                  </div>
+
+                  <CopyCSVButton data={[['Category','Spend','Agreements','YoY'],['Software','$1.39M','18','+12%'],['Professional Services','$528K','9','+4%'],['Infrastructure','$264K','7','−2%'],['Legal & Compliance','$144K','6','+8%'],['Marketing Tools','$72K','5','+19%'],['Other','$48K','2','—']]} />
+
+                  {phase === 'answer' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 14 }}>
+                      {chips.map(c => <FsChip key={c} label={c} onClick={() => handleChipClick(c)} />)}
+                    </div>
+                  )}
+
+                  {selectedChip && phase !== 'answer' && (
+                    <div style={{ marginTop: 20 }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}>
+                        <div style={{ background: '#EEEAE5', borderRadius: '16px 4px 16px 16px', padding: '8px 14px', fontSize: 13.5, color: '#1a1a2e', fontWeight: 500 }}>{selectedChip}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                        <IrisSparkleIcon size={14} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+                      </div>
+                      <FsAgenticSteps steps={FS_CHIP_STEPS[selectedChip] || []} revealed={chipStepsRevealed} collapsed={chipStepsCollapsed} onToggleCollapse={() => setChipStepsCollapsed(c => !c)} />
+
+                      {(phase === 'chip-answered' || phase === 'confirm-thinking' || phase === 'confirm-answered' || phase === 'building') && (
+                        <div className="fs-answer-in">
+                          {!isReportPath && (
+                            <div>
+                              {selectedChip === 'Break down by sub-category' && (
+                                <div>
+                                  <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 10, overflow: 'hidden', marginBottom: 4 }}>
+                                    {[['Sub-category', 'Spend'], ['SaaS Applications', '$840K'], ['Dev Tools', '$310K'], ['Security', '$240K']].map((row, i) => (
+                                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', padding: '8px 14px', borderBottom: i < 3 ? '1px solid var(--ink-border-color-subtle)' : 'none', background: i === 0 ? 'var(--ink-neutral-fade-05)' : 'white', fontSize: i === 0 ? 11.5 : 13, fontWeight: i === 0 ? 700 : 400 }}>
+                                        {row.map((c, j) => <span key={j}>{c}</span>)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <CopyCSVButton data={[['Sub-category','Spend'],['SaaS Applications','$840K'],['Dev Tools','$310K'],['Security','$240K']]} />
+                                </div>
+                              )}
+                              {selectedChip === 'Show me top 5 vendors' && (
+                                <div>
+                                  <div style={{ border: '1px solid var(--ink-border-color-subtle)', borderRadius: 10, overflow: 'hidden', marginBottom: 4 }}>
+                                    {[['Vendor', 'Spend', 'Category'], ['Acme Corp', '$225K', 'Software'], ['Fontara', '$190K', 'Prof. Services'], ['Veridian', '$148K', 'Infrastructure'], ['Nexum', '$112K', 'Software'], ['Praxis Legal', '$98K', 'Legal']].map((row, i) => (
+                                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', padding: '8px 14px', borderBottom: i < 5 ? '1px solid var(--ink-border-color-subtle)' : 'none', background: i === 0 ? 'var(--ink-neutral-fade-05)' : 'white', fontSize: i === 0 ? 11.5 : 13, fontWeight: i === 0 ? 700 : 400 }}>
+                                        {row.map((c, j) => <span key={j}>{c}</span>)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <CopyCSVButton data={[['Vendor','Spend','Category'],['Acme Corp','$225K','Software'],['Fontara','$190K','Prof. Services'],['Veridian','$148K','Infrastructure'],['Nexum','$112K','Software'],['Praxis Legal','$98K','Legal']]} />
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {isReportPath && (phase === 'chip-answered') && (
+                            <div>
+                              <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)', marginBottom: 12 }}>
+                                I'll set that up now. I'll generate a report showing <strong>committed spend by vendor category</strong> across all 47 agreements, including YoY trends and renewal risk flags. Here's what I'll include:
+                              </div>
+                              <div style={{ background: 'var(--ink-neutral-fade-03, #fafafa)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-text-secondary)', marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Report sections</div>
+                                {[
+                                  { label: 'Spend by vendor category', ai: false },
+                                  { label: 'Top vendors by total value', ai: false },
+                                  { label: 'YoY trend analysis', ai: true },
+                                  { label: 'Renewal risk flags', ai: true },
+                                  { label: 'Auto-renewal exposure', ai: true },
+                                ].map((col, i) => (
+                                  <div key={col.label} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderTop: i > 0 ? '1px solid var(--ink-border-color-subtle)' : 'none' }}>
+                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke={col.ai ? 'var(--ink-purple-100, #4B47C8)' : 'var(--ink-text-secondary)'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                    <span style={{ flex: 1, fontSize: 12.5, color: 'var(--ink-text-primary)' }}>{col.label}</span>
+                                    {col.ai && <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)', background: 'var(--ink-purple-05, #f5f3ff)', border: '1px solid var(--ink-purple-20, #d9d3ff)', borderRadius: 100, padding: '1px 7px' }}>AI</span>}
+                                  </div>
+                                ))}
+                              </div>
+                              <FsChip label="Build this report" onClick={handleConfirm} />
+                            </div>
+                          )}
+
+                          {isReportPath && phase === 'confirm-thinking' && (
+                            <div style={{ display: 'flex', gap: 4, paddingTop: 4 }}>
+                              {[0,1,2].map(i => <span key={i} className="iris-thinking-dot" style={{ animationDelay: `${i * 0.18}s` }} />)}
+                            </div>
+                          )}
+
+                          {isReportPath && (phase === 'confirm-answered' || phase === 'building') && (
+                            <div className="fs-answer-in">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                                <IrisSparkleIcon size={14} />
+                                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+                              </div>
+                              <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)', marginBottom: 12 }}>
+                                Generating your spend report now. This will open in <strong>Report Builder</strong> with your data pre-loaded.
+                              </div>
+                              {phase === 'confirm-answered' && (
+                                <button onClick={handleBuild} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#3d39b0'}
+                                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 10l4-4 2 2 4-4" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                  Build my report
+                                </button>
+                              )}
+                              {phase === 'building' && (
+                                <div className="fs-step-in" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'rgba(107,71,200,0.06)', borderRadius: 8 }}>
+                                    <div style={{ display: 'flex', gap: 4 }}>
+                                      {[0,1,2].map(i => <span key={i} className="iris-thinking-dot" style={{ animationDelay: `${i * 0.18}s` }} />)}
+                                    </div>
+                                    <span style={{ fontSize: 13, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 500 }}>Generating report…</span>
+                                  </div>
+                                  <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>Loading Report Builder with your spend data…</div>
+                                </div>
+                              )}
+                              {phase === 'built' && (
+                                <div className="fs-step-in" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--ink-green-10, #f3faf4)', border: '1px solid var(--ink-green-30, #b2f2bb)', borderRadius: 8 }}>
+                                    <Icon name="status-check" size={14} color="var(--ink-green-80, #2f9e44)" />
+                                    <span style={{ fontSize: 13, color: 'var(--ink-green-80, #2f9e44)', fontWeight: 500 }}>Report ready — 6 categories, $2.4M total spend</span>
+                                  </div>
+                                  <div style={{ fontSize: 13, color: 'var(--ink-text-secondary)', lineHeight: 1.6 }}>Opening Report Builder with your data…</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Input bar — matches sidebar style ── */}
+      <div style={{ padding: '10px 24px 8px', flexShrink: 0 }}>
+        <div style={{ maxWidth: 720, margin: '0 auto', border: '1px solid var(--ink-border-color-default)', borderRadius: 14, padding: '12px 12px 10px', background: '#fff', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
+          <div style={{ fontSize: 14, color: 'var(--ink-text-tertiary, #9999aa)', marginBottom: 10, padding: '0 4px' }}>Ask a follow-up…</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button style={{ width: 28, height: 28, border: '1px solid var(--ink-border-color-subtle)', borderRadius: 6, background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-text-secondary)', flexShrink: 0 }}>
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+            </button>
+            <div style={{ flex: 1 }} />
+            <button style={{ width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(75,71,200,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'default' }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 11V3M3 7l4-4 4 4" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div style={{ textAlign: 'center', padding: '0 0 10px', fontSize: 11, color: 'var(--ink-text-tertiary, #9999aa)' }}>
+        Responses are generated with AI and should not be used as legal advice.{' '}
+        <span style={{ textDecoration: 'underline', cursor: 'pointer' }}>Learn how we use AI at Docusign.</span>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════
+   Spend AI Overview Preview (Show More)
+   ═══════════════════════════════════════ */
+function SpendAIPreview({ onShowMore }: { onShowMore: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [exiting, setExiting] = useState(false);
+
+  const handleLaunchFS = () => {
+    setExiting(true);
+    setTimeout(onShowMore, 200);
+  };
+
+  const suggestionChips = [
+    'Break down Software spend by vendor',
+    'Which categories grew the most?',
+    'Show top 5 vendors by total spend',
+    'Compare to prior year',
+  ];
+
+  const rows = [
+    ['Software', '$1.39M', '18', '+12%'],
+    ['Professional Services', '$528K', '9', '+4%'],
+    ['Infrastructure', '$264K', '7', '−2%'],
+    ['Legal & Compliance', '$144K', '6', '+8%'],
+    ['Marketing Tools', '$72K', '5', '+19%'],
+    ['Other', '$48K', '2', '—'],
+  ];
+
+  return (
+    <div className={exiting ? 'spend-preview-out' : 'spend-preview-in'} style={{
+      background: 'white', border: '1.5px solid var(--ink-border-color-subtle)',
+      borderRadius: 12, overflow: 'hidden', marginBottom: 12,
+    }}>
+      <div style={{ padding: '16px 20px 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+          <IrisSparkleIcon size={16} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-purple-100, #4B47C8)' }}>Iris</span>
+          <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)' }}>· Vendor Spend · 6 categories</span>
+        </div>
+        <p style={{ margin: '0 0 14px', fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-primary)' }}>
+          Your committed spend totals <strong>$2.4M/yr</strong> across <strong>6 vendor categories</strong>. Software accounts for 58% of total spend, followed by Professional Services at 22%.
+        </p>
+
+        {/* Table with fade mask when collapsed */}
+        <div style={{ position: 'relative', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, overflow: 'hidden' }}>
+          {/* Header */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 0.8fr', padding: '7px 12px', background: 'var(--ink-neutral-fade-05)', borderBottom: '1px solid var(--ink-border-color-subtle)', fontSize: 11, fontWeight: 700, color: 'var(--ink-text-secondary)' }}>
+            {['Category', 'Spend', 'Agreements', 'YoY'].map(h => <span key={h}>{h}</span>)}
+          </div>
+          {/* Rows — show 3 when collapsed, all when expanded */}
+          {(expanded ? rows : rows.slice(0, 3)).map((row, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 0.8fr', padding: '8px 12px', borderBottom: i < (expanded ? rows.length - 1 : 2) ? '1px solid var(--ink-border-color-subtle)' : 'none', fontSize: 13, background: '#fff' }}>
+              {row.map((cell, j) => (
+                <span key={j} style={{ color: j === 3 ? (cell.startsWith('+') ? '#16a34a' : cell.startsWith('−') ? '#d97706' : 'var(--ink-text-secondary)') : 'var(--ink-text-primary)', fontWeight: j === 3 && cell !== '—' ? 600 : 400 }}>{cell}</span>
+              ))}
+            </div>
+          ))}
+          {/* Blur fade when collapsed */}
+          {!expanded && (
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 52, background: 'linear-gradient(to bottom, transparent, white)', pointerEvents: 'none' }} />
+          )}
+        </div>
+      </div>
+
+      {/* Show more / chat area */}
+      {!expanded ? (
+        <button onClick={() => setExpanded(true)} style={{
+          display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'center', gap: 6,
+          padding: '10px 0', border: 'none', borderTop: '1px solid var(--ink-border-color-subtle)',
+          background: 'transparent', cursor: 'pointer', fontSize: 13.5, fontWeight: 600,
+          color: 'var(--ink-text-primary)', fontFamily: 'inherit', transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'}
+        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+        >
+          Show more
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2.5 4.5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+      ) : (
+        <div style={{ borderTop: '1px solid var(--ink-border-color-subtle)', padding: '10px 16px 14px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6, marginBottom: 10 }}>
+            {suggestionChips.map(chip => (
+              <button
+                key={chip}
+                onClick={handleLaunchFS}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, background: '#fff', fontSize: 12.5, color: 'var(--ink-text-primary)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-purple-30, #d9d3ff)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'var(--ink-border-color-default)'; }}
+              >
+                <Icon name="reply" size={12} color="var(--ink-purple-100, #4B47C8)" />
+                {chip}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--ink-neutral-fade-05)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+            <input
+              autoFocus
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleLaunchFS(); }}
+              placeholder="Ask about your spend..."
+              style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, background: 'transparent', color: 'var(--ink-text-primary)', fontFamily: 'inherit' }}
+            />
+            <button
+              onClick={handleLaunchFS}
+              style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+            >
+              <Icon name="arrow-up" size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
+  const [showWIPModal, setShowWIPModal] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>(getTabFromHash);
   const [sidebarView, setSidebarView] = useState<SidebarView>('completed');
   const [templatesSidebarView, setTemplatesSidebarView] = useState<TemplatesSidebarView>('my-templates');
@@ -5821,17 +7377,23 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [selectedQueryId, setSelectedQueryId] = useState('');
-  const [acmeCardKey, setAcmeCardKey] = useState(0);
   const [showIrisSidebar, setShowIrisSidebar] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [showWorksheetModal, setShowWorksheetModal] = useState(false);
   const [showWorksheetView, setShowWorksheetView] = useState(false);
+  const [showReportBuilder, setShowReportBuilder] = useState(false);
+  const [reportConfig, setReportConfig] = useState<{ measure: string; groupBy: string }>({ measure: 'Annual Contract Value', groupBy: 'Vendor Category' });
   const [worksheetType, setWorksheetType] = useState<string>('renewals');
   const [worksheetLoading, setWorksheetLoading] = useState(false);
+  const [showStartWorksheetModal, setShowStartWorksheetModal] = useState(false);
+  const [startWorksheetQuery, setStartWorksheetQuery] = useState('');
+  const [reportLoading, setReportLoading] = useState(false);
   const handleBuildWorksheet = useCallback((type: string) => {
     setWorksheetType(type);
     setWorksheetLoading(true);
-    if (type === 'vendor-exposure-acme' || type === 'renewal-scan' || type === 'auto-renew-risk' || type === 'deep-analysis' || type === 'finance-erp' || type === 'termination-audit') {
+    if (type === 'vendor-exposure-acme' || type === 'renewal-scan' || type === 'auto-renew-risk' || type === 'deep-analysis' || type === 'termination-audit') {
       setTimeout(() => {
         setWorksheetLoading(false);
         setShowWorksheetView(true);
@@ -5843,16 +7405,8 @@ export default function App() {
   }, []);
   const [irisFollowUp, setIrisFollowUp] = useState<string | undefined>();
   const [irisFlowId, setIrisFlowId] = useState<string | undefined>();
+  const [irisKey, setIrisKey] = useState(0);
   const [deepAnalysisKey, setDeepAnalysisKey] = useState(0);
-  const handleAcmeChipSelect = useCallback((msg: string) => {
-    setIrisFollowUp(msg);
-    const ml = msg.toLowerCase();
-    const flowId = ml.includes('cost center') || ml.includes('actual spend') || ml.includes('discounts') ? 'sq_finance'
-      : ml.includes('product') ? 'sq_deep'
-      : 'sq_deep';
-    setIrisFlowId(flowId);
-    setShowIrisSidebar(true);
-  }, []);
   const handleDeepAnalysisCTA = useCallback(() => {
     setIrisFollowUp(undefined);
     setIrisFlowId('sq_deep');
@@ -5861,6 +7415,14 @@ export default function App() {
   const [isAnswerLoading, setIsAnswerLoading] = useState(false);
   const suggestionsHideTimer = useRef<ReturnType<typeof setTimeout>>();
   const [showAgreementDetail, setShowAgreementDetail] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [viewMode, setViewMode] = useState<'side-panel' | 'unified-search'>('side-panel');
+  const [showFsIris, setShowFsIris] = useState(false);
+  const [fsFlowId, setFsFlowId] = useState<'fs_deep' | 'fs_spend' | undefined>(undefined);
+  const [fsQuery, setFsQuery] = useState('');
+  const [showSpendPreview, setShowSpendPreview] = useState(false);
+  const [sidebarSkipThinking, setSidebarSkipThinking] = useState(false);
+  const [fsSkipThinking, setFsSkipThinking] = useState(false);
 
   /* ── Sync hash ↔ state ── */
   useEffect(() => {
@@ -5886,9 +7448,32 @@ export default function App() {
     if (tabId === 'insights') setInsightsSidebarView('overview');
   }, []);
 
+  const handleReset = useCallback(() => {
+    window.location.hash = 'agreements';
+    setActiveTab('agreements');
+    setSidebarView('completed');
+    setSearch('');
+    setSubmittedSearch('');
+    setSelectedQueryId('');
+    setShowIrisSidebar(false);
+    setIrisFollowUp(undefined);
+    setIrisFlowId(undefined);
+    setShowWorksheetView(false);
+    setShowWorksheetModal(false);
+    setShowReportBuilder(false);
+    setShowAgreementDetail(false);
+    setShowFsIris(false);
+    setShowSpendPreview(false);
+    setShowStartWorksheetModal(false);
+    setSidebarSkipThinking(false);
+    setDeepAnalysisKey(k => k + 1);
+    setViewMode('side-panel');
+    setShowWIPModal(false);
+  }, []);
+
   /* ── GlobalNav — matches production DocuSign ── */
   const globalNavConfig = {
-    logo: <img src="/docusign-logo.svg" alt="DocuSign" />,
+    logo: <button onClick={handleReset} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}><img src="/docusign-logo.svg" alt="DocuSign" /></button>,
     showAppSwitcher: true,
     onAppSwitcherClick: () => {},
     navItems: [
@@ -5899,7 +7484,8 @@ export default function App() {
     ],
     showSettings: true,
     settingsIcon: 'sliders-horizontal' as const,
-    user: { name: 'Akshat Mishra' },
+    user: { name: 'Casey Hudetz' },
+    extraActions: <ViewModeToggle mode={viewMode} onChange={(m) => { setViewMode(m); if (m === 'unified-search' || activeTab === 'search-bar') handleTabClick('agreements'); setSidebarView('completed'); }} searchBarActive={activeTab === 'search-bar'} onSearchBarClick={() => handleTabClick('search-bar')} />,
   };
 
   /* ── LocalNav — Agreements tab ── */
@@ -6023,7 +7609,7 @@ export default function App() {
       case 'drafts':
         return [
           { id: 'd1', name: 'Q2 Partnership Agreement - Draft', recipient: 'To: Legal Team', status: 'Draft', statusIcon: 'clock' as const, statusKind: 'neutral' as const, date: '31/3/2026', time: '09:15', action: 'Edit' as const },
-          { id: 'd2', name: 'Contractor NDA - Pending Review', recipient: 'To: Akshat Mishra', status: 'Draft', statusIcon: 'clock' as const, statusKind: 'neutral' as const, date: '30/3/2026', time: '14:30', action: 'Edit' as const },
+          { id: 'd2', name: 'Contractor NDA - Pending Review', recipient: 'To: Casey Hudetz', status: 'Draft', statusIcon: 'clock' as const, statusKind: 'neutral' as const, date: '30/3/2026', time: '14:30', action: 'Edit' as const },
           { id: 'd3', name: 'Office Lease Renewal 2026', recipient: 'To: Facilities', status: 'Draft', statusIcon: 'clock' as const, statusKind: 'neutral' as const, date: '28/3/2026', time: '11:00', action: 'Edit' as const },
         ];
       case 'in-progress':
@@ -6037,7 +7623,7 @@ export default function App() {
         return AGREEMENTS_DATA.filter(a => a.status === 'Completed');
       case 'deleted':
         return [
-          { id: 'del1', name: 'Old NDA - Expired', recipient: 'To: Akshat Mishra', status: 'Voided', statusIcon: 'status-void' as const, statusKind: 'neutral' as const, statusSub: 'Deleted', date: '15/3/2026', time: '08:30', action: 'Copy' as const },
+          { id: 'del1', name: 'Old NDA - Expired', recipient: 'To: Casey Hudetz', status: 'Voided', statusIcon: 'status-void' as const, statusKind: 'neutral' as const, statusSub: 'Deleted', date: '15/3/2026', time: '08:30', action: 'Copy' as const },
         ];
       default:
         return AGREEMENTS_DATA;
@@ -6068,7 +7654,9 @@ export default function App() {
   /* ── Navigator filtered data — only filters on submit, not on keystroke ── */
   const filteredNavigator = useMemo(() => {
     if (!submittedSearch) return NAVIGATOR_DATA;
+    if (selectedQueryId === 'sq_deep') return NAVIGATOR_ACME;
     const q = submittedSearch.toLowerCase();
+    if (q.trim() === 'fontara' || q.includes('fontara')) return NAVIGATOR_FONTARA;
     if (q.includes('sla') || q.includes('uptime') || q.includes('service level') || q.includes('service credit') || q.includes('claim window') || q.includes('remedy')) return NAVIGATOR_SLA;
     if (q.includes('pricing cap') || q.includes('price raise') || q.includes('expiring in 6') || (q.includes('expir') && (q.includes('cap') || q.includes('selling') || q.includes('price') || q.includes('raise')))) return NAVIGATOR_PRICE_RAISE;
     if (q.includes('acme') || q.includes('exposure') || q.includes('total spend') || q.includes('benchmark')) return NAVIGATOR_ACME;
@@ -6086,7 +7674,7 @@ export default function App() {
       )
     );
     return filtered.length > 0 ? filtered : NAVIGATOR_DATA;
-  }, [submittedSearch]);
+  }, [submittedSearch, selectedQueryId]);
 
   /* ── Requests filtered data ── */
   const filteredRequests = useMemo(() => {
@@ -6099,9 +7687,9 @@ export default function App() {
   const viewTemplates = useMemo(() => {
     switch (templatesSidebarView) {
       case 'my-templates':
-        return TEMPLATES_DATA.filter(t => t.owner === 'Akshat Mishra');
+        return TEMPLATES_DATA.filter(t => t.owner === 'Casey Hudetz');
       case 'shared-with-me':
-        return TEMPLATES_DATA.filter(t => t.shared && t.owner !== 'Akshat Mishra');
+        return TEMPLATES_DATA.filter(t => t.shared && t.owner !== 'Casey Hudetz');
       case 'favorites':
         return TEMPLATES_DATA.filter(t => t.favorited);
       default:
@@ -6225,10 +7813,12 @@ export default function App() {
   /* ── Agreements content ── */
   const agreementsContent = (
     <AgreementTableView
-      banner={isNavigatorView ? (
-        <Banner kind="promo" closable customIcon={<IrisIcon />}>
-          <strong>0 agreements</strong> with renewal notice dates in the next 30 days.
-        </Banner>
+      banner={isNavigatorView && !bannerDismissed ? (
+        <div style={{ display: 'flex', alignItems: 'center', background: 'var(--ink-message-bg-color-subtle)', minHeight: 52, padding: '0 8px', width: '100%', boxSizing: 'border-box' }}>
+          <span style={{ flex: 1, textAlign: 'center', fontSize: 14, color: 'var(--ink-font-color-default)' }}>Stay ahead of your renewals</span>
+          <Button kind="tertiary" size="small" menuTrigger onClick={() => {}}>Show Insights</Button>
+          <IconButton icon="close" variant="tertiary" size="small" onClick={() => setBannerDismissed(true)} aria-label="Close" />
+        </div>
       ) : undefined}
       pageHeader={
         <PageHeader
@@ -6250,24 +7840,113 @@ export default function App() {
             ? <Button kind="secondary">Create Request</Button>
             : isNavigatorView
             ? (<>
-                <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid var(--ink-border-color-default)', borderRadius: 'var(--ink-radius-sm)', height: '32px', background: '#fff', cursor: 'pointer' }}>
-                  <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name="plus" size={16} color="var(--ink-text-primary)" />
+                {/* + button with dropdown */}
+                <div style={{ position: 'relative' }}>
+                  <div onClick={() => { setShowAddDropdown(v => !v); setShowSettingsDropdown(false); }} style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid var(--ink-border-color-default)', borderRadius: 'var(--ink-radius-sm)', height: '32px', background: '#fff', cursor: 'pointer', userSelect: 'none' }}>
+                    <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="plus" size={16} color="var(--ink-text-primary)" />
+                    </div>
+                    <div style={{ width: 1, height: 16, background: 'var(--ink-border-color-default)' }} />
+                    <div style={{ width: 24, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
+                    </div>
                   </div>
-                  <div style={{ width: 1, height: 16, background: 'var(--ink-border-color-default)' }} />
-                  <div style={{ width: 24, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
-                  </div>
+                  {showAddDropdown && (
+                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.10)', zIndex: 9999, width: 280, overflow: 'hidden' }}
+                      onMouseLeave={() => setShowAddDropdown(false)}>
+                      <div style={{ padding: '10px 14px 6px', fontSize: 11, fontWeight: 700, color: 'var(--ink-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Add documents to Completed</div>
+                      {[
+                        { icon: 'upload', label: 'Upload', sub: 'From your device or installed', badge: false },
+                        { icon: 'arrow-right', label: 'Import from Email', sub: 'Send attachments into Agreement Manager', badge: true },
+                      ].map(item => (
+                        <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer', background: '#fff' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#fff'}
+                          onClick={() => setShowAddDropdown(false)}>
+                          <div style={{ width: 32, height: 32, borderRadius: 6, border: '1px solid var(--ink-border-color-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Icon name={item.icon as any} size={15} color="var(--ink-text-primary)" />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {item.label}
+                              {item.badge && <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--ink-purple-10, #f0eeff)', color: 'var(--ink-purple-100, #4B47C8)', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 4, padding: '1px 5px' }}>New</span>}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 1 }}>{item.sub}</div>
+                          </div>
+                        </div>
+                      ))}
+                      <div style={{ margin: '6px 0', borderTop: '1px solid var(--ink-border-color-subtle)' }} />
+                      <div style={{ padding: '4px 14px 6px', fontSize: 11, fontWeight: 700, color: 'var(--ink-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Add data from external sources</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px 12px', cursor: 'pointer', background: '#fff' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#fff'}
+                        onClick={() => setShowAddDropdown(false)}>
+                        <div style={{ width: 32, height: 32, borderRadius: 6, border: '1px solid var(--ink-border-color-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Icon name="arrow-right" size={15} color="var(--ink-text-primary)" />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            Import Data
+                            <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--ink-purple-10, #f0eeff)', color: 'var(--ink-purple-100, #4B47C8)', border: '1px solid var(--ink-purple-20, #d8d5f7)', borderRadius: 4, padding: '1px 5px' }}>New</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 1 }}>Edit data with a spreadsheet</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid var(--ink-border-color-default)', borderRadius: 'var(--ink-radius-sm)', height: '32px', background: '#fff', cursor: 'pointer' }}>
-                  <div style={{ position: 'relative', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Icon name="settings" size={16} color="var(--ink-text-primary)" />
-                    <div style={{ position: 'absolute', top: 5, right: 5, width: 8, height: 8, borderRadius: '50%', background: '#e03131', border: '1.5px solid #fff' }} />
-                  </div>
-                  <div style={{ width: 1, height: 16, background: 'var(--ink-border-color-default)' }} />
-                  <div style={{ width: 24, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* Settings button with dropdown */}
+                <div style={{ position: 'relative' }}>
+                  <div onClick={() => { setShowSettingsDropdown(v => !v); setShowAddDropdown(false); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 10px', border: '1px solid var(--ink-border-color-default)', borderRadius: 'var(--ink-radius-sm)', height: '32px', background: '#fff', cursor: 'pointer', userSelect: 'none' as const }}>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name="settings" size={16} color="var(--ink-text-primary)" />
+                      <div style={{ position: 'absolute', top: -3, right: -3, width: 7, height: 7, borderRadius: '50%', background: '#e03131', border: '1.5px solid #fff' }} />
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)', lineHeight: 1 }}>Manage</span>
                     <Icon name="chevron-down" size={12} color="var(--ink-text-secondary)" />
                   </div>
+                  {showSettingsDropdown && (
+                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.10)', zIndex: 9999, width: 260, overflow: 'hidden' }}
+                      onMouseLeave={() => setShowSettingsDropdown(false)}>
+                      <div style={{ padding: '10px 14px 6px', fontSize: 11, fontWeight: 700, color: 'var(--ink-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Manage agreement data</div>
+                      {[
+                        { icon: 'document', label: 'Fields', sub: 'Track data inside your agreements' },
+                        { icon: 'list', label: 'Agreement Types', sub: 'Categorize and structure agreements' },
+                        { icon: 'users', label: 'Parties', sub: 'Maintain business relationships' },
+                        { icon: 'flag', label: 'Obligations', sub: 'Sort and label common tasks' },
+                        { icon: 'layers', label: 'Sets', sub: 'Filter and share related agreements' },
+                        { icon: 'git-branch', label: 'Rules', sub: 'Stay organized with if/then logic' },
+                      ].map(item => (
+                        <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px', cursor: 'pointer', background: '#fff' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#fff'}
+                          onClick={() => setShowSettingsDropdown(false)}>
+                          <div style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid var(--ink-border-color-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Icon name={item.icon as any} size={14} color="var(--ink-text-secondary)" />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-text-primary)' }}>{item.label}</div>
+                            <div style={{ fontSize: 12, color: 'var(--ink-text-secondary)', marginTop: 1 }}>{item.sub}</div>
+                          </div>
+                        </div>
+                      ))}
+                      <div style={{ margin: '6px 0', borderTop: '1px solid var(--ink-border-color-subtle)' }} />
+                      {[
+                        { icon: 'refresh', label: 'Uploads and Processing Status' },
+                        { icon: 'copy', label: 'Review Duplicate Files' },
+                        { icon: 'clock', label: 'View Activity Log' },
+                      ].map(item => (
+                        <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', background: '#fff' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'var(--ink-neutral-fade-05)'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#fff'}
+                          onClick={() => setShowSettingsDropdown(false)}>
+                          <Icon name={item.icon as any} size={15} color="var(--ink-text-secondary)" />
+                          <div style={{ fontSize: 13, color: 'var(--ink-text-primary)' }}>{item.label}</div>
+                        </div>
+                      ))}
+                      <div style={{ height: 4 }} />
+                    </div>
+                  )}
                 </div>
               </>)
             : <Button kind="secondary" menuTrigger>Shared Access</Button>
@@ -6275,84 +7954,151 @@ export default function App() {
         />
       }
       filterBar={
-        <div
-          style={{ position: 'relative' }}
-          onFocusCapture={() => {
-            if (isNavigatorView) {
-              clearTimeout(suggestionsHideTimer.current);
-              setShowSuggestions(true);
-            }
-          }}
-          onBlurCapture={() => {
-            suggestionsHideTimer.current = setTimeout(() => setShowSuggestions(false), 150);
-          }}
-        >
-        <FilterBar
-          viewSelector={isPartiesView ? (
-            <Button kind="secondary" size="small" menuTrigger>Role View</Button>
-          ) : undefined}
-          search={{
-            value: search,
-            onChange: (v) => { setSearch(v); if (!v) { setSubmittedSearch(''); setShowIrisSidebar(false); } },
-            onSubmit: isNavigatorView ? () => {
-              const sq = search.toLowerCase().trim();
-              if (sq === 'acme') { setSelectedQueryId('sq_deep'); setAcmeCardKey(k => k + 1); }
-              else if ((sq.includes('6 month') || sq.includes('six month')) && (sq.includes('expir') || sq.includes('renew') || sq.includes('vendor'))) setSelectedQueryId('sq3');
-              else if (sq.includes('auto-renew') || sq.includes('alert me') || sq.includes('auto renew')) setSelectedQueryId('sq_autorenew');
-              else setSelectedQueryId('');
-              setSubmittedSearch(search);
-              setShowSuggestions(false);
-            } : undefined,
-            placeholder: isNavigatorView
-              ? "Ask a question about your agreements..."
-              : isPartiesView ? 'Search parties...'
-              : isRequestsView ? 'Search Request Titles or IDs...'
-              : 'Search Envelopes',
-          }}
-          showSearchIndicator={!isPartiesView && !isRequestsView}
-          quickActions={isNavigatorView ? [
-            <IconButton key="bm" icon="bookmark" variant="secondary" size="small" aria-label="Bookmarks" />,
-          ] : isRequestsView ? [
-            <IconButton key="bm" icon="bookmark" variant="secondary" size="small" aria-label="Bookmarks" />,
-          ] : undefined}
-          filters={isPartiesView ? (
-            <Inline gap="small" align="center" style={{ flexWrap: 'nowrap' }}>
-              <Button kind="secondary" size="small" menuTrigger>Party Roles</Button>
-              <Button kind="secondary" size="small" menuTrigger>Party Side</Button>
-            </Inline>
-          ) : isRequestsView ? (
-            <Inline gap="small" align="center" style={{ flexWrap: 'nowrap' }}>
-              <Chip onRemove={() => {}}>Status Type: Open</Chip>
-              <Button kind="secondary" size="small" menuTrigger>Created At</Button>
-              <Button kind="secondary" size="small" menuTrigger>Due Date</Button>
-              <Button kind="secondary" size="small" menuTrigger>Last Activity At</Button>
-              <Button kind="secondary" size="small" menuTrigger>Owner</Button>
-              <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>All Filters</Button>
-            </Inline>
-          ) : isNavigatorView ? (
-            <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>Filters</Button>
-          ) : (
-            <Inline gap="small" align="center" style={{ flexWrap: 'nowrap' }}>
-              <Chip onRemove={() => {}}>Date: Last 6 Months</Chip>
-              <div style={{ width: 1, height: 20, background: 'var(--ink-border-subtle)', flexShrink: 0 }} />
-              <Button kind="secondary" size="small" menuTrigger>Status</Button>
-              <Button kind="secondary" size="small" menuTrigger>Sender</Button>
-              <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>All Filters</Button>
-            </Inline>
-          )}
-        />
-        {isNavigatorView && showSuggestions && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: '4px' }}>
-            <SuggestionsDropdown onSelect={(q, id) => {
-              setSearch(q);
-              setSubmittedSearch(q);
-              setSelectedQueryId(id);
-              setShowSuggestions(false);
-              if (id === 'sq_finance') setAcmeCardKey(k => k + 1);
-            }} />
+        isNavigatorView && viewMode === 'unified-search' ? (
+          /* ── AI Search bar (unified mode) — full row ── */
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            {/* Left group: search pill + saved searches + filters — flush together */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ position: 'relative', width: 560 }}>
+                <UnifiedSearchBar
+                  onSearch={(query) => {
+                    setSearch(query);
+                    setSubmittedSearch(query);
+                    setSidebarView('completed');
+                  }}
+                  onAskIris={(query) => {
+                    setSearch(query);
+                    setIrisFollowUp(query);
+                    setIrisFlowId('sq_deep');
+                    setIrisKey(k => k + 1);
+                    setShowIrisSidebar(true);
+                    setSidebarView('completed');
+                  }}
+                />
+              </div>
+              <IconButton icon="bookmark" variant="secondary" size="small" aria-label="Saved questions" />
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>Filters</Button>
+                {submittedSearch && (
+                  <span style={{ position: 'absolute', top: -5, right: -5, width: 16, height: 16, borderRadius: '50%', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #fff', lineHeight: 1 }}>1</span>
+                )}
+              </div>
+            </div>
+            {/* Right group: worksheets + ask iris */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+              <Button kind="secondary" size="small" startElement={<Icon name="layout-grid" size={14} />}>Worksheets</Button>
+              <button
+                onClick={() => { setIrisKey(k => k + 1); setIrisFollowUp(undefined); setIrisFlowId(undefined); setShowIrisSidebar(true); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 14px 5px 10px', border: 'none', borderRadius: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, height: 32 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M13.6197 6.45843C12.4638 6.03003 11.607 5.63395 10.9199 5.18938C10.0308 4.62356 9.38414 3.97691 8.81832 3.08776C8.38183 2.4007 7.97768 1.5358 7.54927 0.387994C7.46844 0.153583 7.25019 0.00808674 7.0077 0.00808674C6.76521 0.00808674 6.54696 0.153583 6.46613 0.387994C6.03772 1.54388 5.64165 2.4007 5.19708 3.08776C4.63126 3.97691 3.97652 4.62356 3.08738 5.18938C2.40031 5.62587 1.53541 6.03003 0.387608 6.45843C0.153197 6.53926 0.00770082 6.75751 0.00770082 7C0.00770082 7.2425 0.153197 7.46074 0.387608 7.54157C1.5435 7.9619 2.40031 8.36605 3.08738 8.81063C3.97652 9.37645 4.62317 10.0231 5.19708 10.9122C5.63357 11.6074 6.03772 12.4642 6.46613 13.612C6.55504 13.8464 6.76521 13.9919 7.0077 13.9919C7.25019 13.9919 7.46844 13.8383 7.54927 13.612C7.97768 12.4561 8.37375 11.5993 8.81832 10.9122C9.38414 10.0231 10.0308 9.37645 10.9199 8.81063C11.6151 8.37414 12.4719 7.96998 13.6197 7.54157C13.8541 7.45266 13.9996 7.2425 13.9996 7C13.9996 6.75751 13.846 6.53926 13.6197 6.45843Z" fill="white"/>
+                </svg>
+                Ask Iris
+              </button>
+            </div>
           </div>
-        )}
+        ) : (
+        <div
+          style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 8 }}
+        >
+          <div className="search-input-wrapper" style={{ position: 'relative', flex: 1 }}
+            onFocusCapture={() => {
+              if (isNavigatorView) {
+                clearTimeout(suggestionsHideTimer.current);
+                setShowSuggestions(true);
+              }
+            }}
+            onBlurCapture={() => {
+              suggestionsHideTimer.current = setTimeout(() => setShowSuggestions(false), 150);
+            }}
+          >
+          <FilterBar
+            viewSelector={isPartiesView ? (
+              <Button kind="secondary" size="small" menuTrigger>Role View</Button>
+            ) : undefined}
+            search={{
+              value: search,
+              onChange: (v) => { setSearch(v); if (!v) { setSubmittedSearch(''); setShowIrisSidebar(false); } },
+              onSubmit: isNavigatorView ? () => {
+                const sq = search.toLowerCase().trim();
+                if ((sq.includes('6 month') || sq.includes('six month')) && (sq.includes('expir') || sq.includes('renew') || sq.includes('vendor'))) setSelectedQueryId('sq3');
+                else setSelectedQueryId('');
+                setSubmittedSearch(search);
+                setShowSuggestions(false);
+              } : undefined,
+              placeholder: isNavigatorView
+                ? 'Try "which agreements expire in 90 days"'
+                : isPartiesView ? 'Search parties...'
+                : isRequestsView ? 'Search Request Titles or IDs...'
+                : 'Search Envelopes',
+            }}
+            quickActions={isNavigatorView ? [
+              <IconButton key="bm" icon="bookmark" variant="secondary" size="small" aria-label="Bookmarks" />,
+            ] : isRequestsView ? [
+              <IconButton key="bm" icon="bookmark" variant="secondary" size="small" aria-label="Bookmarks" />,
+            ] : undefined}
+            filters={isPartiesView ? (
+              <Inline gap="small" align="center" style={{ flexWrap: 'nowrap' }}>
+                <Button kind="secondary" size="small" menuTrigger>Party Roles</Button>
+                <Button kind="secondary" size="small" menuTrigger>Party Side</Button>
+              </Inline>
+            ) : isRequestsView ? (
+              <Inline gap="small" align="center" style={{ flexWrap: 'nowrap' }}>
+                <Chip onRemove={() => {}}>Status Type: Open</Chip>
+                <Button kind="secondary" size="small" menuTrigger>Created At</Button>
+                <Button kind="secondary" size="small" menuTrigger>Due Date</Button>
+                <Button kind="secondary" size="small" menuTrigger>Last Activity At</Button>
+                <Button kind="secondary" size="small" menuTrigger>Owner</Button>
+                <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>All Filters</Button>
+              </Inline>
+            ) : isNavigatorView ? (
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>Filters</Button>
+                {submittedSearch && (
+                  <span style={{ position: 'absolute', top: -5, right: -5, width: 16, height: 16, borderRadius: '50%', background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #fff', lineHeight: 1 }}>1</span>
+                )}
+              </div>
+            ) : (
+              <Inline gap="small" align="center" style={{ flexWrap: 'nowrap' }}>
+                <Chip onRemove={() => {}}>Date: Last 6 Months</Chip>
+                <div style={{ width: 1, height: 20, background: 'var(--ink-border-subtle)', flexShrink: 0 }} />
+                <Button kind="secondary" size="small" menuTrigger>Status</Button>
+                <Button kind="secondary" size="small" menuTrigger>Sender</Button>
+                <Button kind="secondary" size="small" startElement={<Icon name="filter" size={14} />}>All Filters</Button>
+              </Inline>
+            )}
+          />
+          {isNavigatorView && showSuggestions && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999, marginTop: '4px' }}>
+              <SuggestionsDropdown
+                filterIds={undefined}
+                onSelect={(q, id) => {
+                setSearch(q);
+                setShowSuggestions(false);
+                setSubmittedSearch(q);
+                setSelectedQueryId(id);
+              }} />
+            </div>
+          )}
+          </div>
+          {/* Worksheets + Ask Iris — pushed to far right */}
+          {isNavigatorView && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+              <Button kind="secondary" size="small" startElement={<Icon name="layout-grid" size={14} />}>Worksheets</Button>
+              <button
+                onClick={() => { setIrisKey(k => k + 1); setIrisFollowUp(undefined); setIrisFlowId(undefined); setShowIrisSidebar(true); }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 14px 5px 10px', border: 'none', borderRadius: 6, background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, height: 32 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M13.6197 6.45843C12.4638 6.03003 11.607 5.63395 10.9199 5.18938C10.0308 4.62356 9.38414 3.97691 8.81832 3.08776C8.38183 2.4007 7.97768 1.5358 7.54927 0.387994C7.46844 0.153583 7.25019 0.00808674 7.0077 0.00808674C6.76521 0.00808674 6.54696 0.153583 6.46613 0.387994C6.03772 1.54388 5.64165 2.4007 5.19708 3.08776C4.63126 3.97691 3.97652 4.62356 3.08738 5.18938C2.40031 5.62587 1.53541 6.03003 0.387608 6.45843C0.153197 6.53926 0.00770082 6.75751 0.00770082 7C0.00770082 7.2425 0.153197 7.46074 0.387608 7.54157C1.5435 7.9619 2.40031 8.36605 3.08738 8.81063C3.97652 9.37645 4.62317 10.0231 5.19708 10.9122C5.63357 11.6074 6.03772 12.4642 6.46613 13.612C6.55504 13.8464 6.76521 13.9919 7.0077 13.9919C7.25019 13.9919 7.46844 13.8383 7.54927 13.612C7.97768 12.4561 8.37375 11.5993 8.81832 10.9122C9.38414 10.0231 10.0308 9.37645 10.9199 8.81063C11.6151 8.37414 12.4719 7.96998 13.6197 7.54157C13.8541 7.45266 13.9996 7.2425 13.9996 7C13.9996 6.75751 13.846 6.53926 13.6197 6.45843Z" fill="white"/>
+                </svg>
+                Ask Iris
+              </button>
+            </div>
+          )}
         </div>
+        )
       }
     >
       {isPartiesView ? (
@@ -6361,32 +8107,22 @@ export default function App() {
         <DataTable columns={requestColumns} data={filteredRequests} getRowKey={(row) => row.id} stickyHeader showColumnControl rowHeight="tall" emptyMessage="No requests found" pagination={{ page: 1, pageSize: 10, totalItems: filteredRequests.length, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
       ) : isNavigatorView ? (
         <>
+          {submittedSearch && selectedQueryId === 'sq_deep' && viewMode === 'side-panel' && (
+            <AcmeDeepBlock
+              onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_deep'); setIrisKey(k => k + 1); setShowIrisSidebar(true); }}
+              onStartWorksheet={(query) => { setStartWorksheetQuery(query); setShowStartWorksheetModal(true); }}
+            />
+          )}
+          {submittedSearch && selectedQueryId === 'sq_spend' && viewMode === 'side-panel' && (
+            <SpendAnswerBlock sidebarOpen={showIrisSidebar} onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_spend'); setShowIrisSidebar(true); }} />
+          )}
           {submittedSearch && selectedQueryId === 'sq_updates' && (
-            <AcmeUpdatesBlock onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_updates'); setShowIrisSidebar(true); }} />
+            <AcmeUpdatesBlock sidebarOpen={showIrisSidebar} onFollowUp={(msg) => { setIrisFollowUp(msg || undefined); setIrisFlowId('sq_updates'); setShowIrisSidebar(true); }} />
           )}
-          {submittedSearch && selectedQueryId === 'sq_deep' && (
-            <AcmeDeepBlock onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_deep'); setShowIrisSidebar(true); }} />
+          {submittedSearch && selectedQueryId === 'sq_renewal' && (
+            <RenewalAnswerBlock onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_renewal'); setShowIrisSidebar(true); }} />
           )}
-          {submittedSearch && selectedQueryId === 'sq_finance' && (
-            <AcmeAnswerCard key={`acme-${acmeCardKey}`} onChipSelect={handleAcmeChipSelect} flowId={selectedQueryId} />
-          )}
-          {submittedSearch && selectedQueryId === 'sq_question' && (
-            <AutoRenewRiskBlock onBuildWorksheet={handleBuildWorksheet} onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_autorenew'); setShowIrisSidebar(true); }} />
-          )}
-          {submittedSearch && selectedQueryId === 'sq_termination' && (
-            <AcmeTerminationBlock onFollowUp={(msg) => { setIrisFollowUp(msg); setIrisFlowId('sq_termination'); setShowIrisSidebar(true); }} />
-          )}
-          {submittedSearch && selectedQueryId !== 'sq_updates' && selectedQueryId !== 'sq_deep' && selectedQueryId !== 'sq_finance' && selectedQueryId !== 'sq_question' && selectedQueryId !== 'sq_termination' && (isAnswerLoading ? <AnswerSkeleton /> : <AIAnswerBlock question={submittedSearch} onContinue={(msg) => { setIrisFollowUp(msg || undefined); setShowIrisSidebar(true); }} onBuildWorksheet={handleBuildWorksheet} />)}
-          {submittedSearch && filteredNavigator.length < 687 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 0 10px', borderBottom: '1px solid var(--ink-border-color-subtle)', marginBottom: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--ink-border-color-default)', borderRadius: 100, padding: '3px 12px' }}>
-                <span style={{ fontSize: 12, color: 'var(--ink-text-secondary)', fontWeight: 500 }}>Showing {selectedQueryId === 'sq_autorenew' || selectedQueryId === 'sq_question' ? 8 : selectedQueryId === 'sq3' ? 42 : filteredNavigator.length} of 687</span>
-              </div>
-              <Text size="xs" color="secondary">agreements matching your search</Text>
-              <button onClick={() => { setSearch(''); setSubmittedSearch(''); setSelectedQueryId(''); }} style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-text-secondary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>Clear filter</button>
-            </div>
-          )}
-          <DataTable columns={navigatorColumns} data={filteredNavigator} getRowKey={(row) => row.id} selectable stickyHeader showColumnControl rowHeight="tall" emptyMessage="No completed documents" onRowClick={() => setShowAgreementDetail(true)} pagination={{ page: 1, pageSize: 50, totalItems: submittedSearch ? filteredNavigator.length : 687, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
+          <DataTable columns={navigatorColumns} data={filteredNavigator} getRowKey={(row) => row.id} selectable stickyHeader showColumnControl rowHeight="tall" emptyMessage="No completed documents" onRowClick={() => setShowAgreementDetail(true)} pagination={{ page: 1, pageSize: 25, totalItems: submittedSearch ? (selectedQueryId === 'sq3' ? 42 : selectedQueryId === 'sq_spend' ? 47 : filteredNavigator.length) : 23505, onPageChange: () => {}, onPageSizeChange: () => {}, showInfo: true }} />
         </>
       ) : (
         <DataTable columns={agreementColumns} data={filteredAgreements} getRowKey={(row) => row.id} selectable stickyHeader showColumnControl rowHeight="tall" emptyMessage={
@@ -6406,6 +8142,7 @@ export default function App() {
     templates: templatesSidebar,
     insights: insightsSidebar,
     admin: undefined,
+    'search-bar': undefined,
   };
 
   const contentMap: Record<TabId, JSX.Element> = {
@@ -6414,6 +8151,7 @@ export default function App() {
     templates: templatesContent,
     insights: insightsContent,
     admin: <AdminPage />,
+    'search-bar': <SearchBarLabPage />,
   };
 
   /* ── Transition key — changes on tab OR sidebar view to trigger animation ── */
@@ -6430,9 +8168,17 @@ export default function App() {
             ? { ...agreementsSidebar, isLocked: false }
             : sidebarMap[activeTab]}
         >
-          <FadeIn keyProp={transitionKey + (showWorksheetView ? '-ws' : '')} key={transitionKey + (showWorksheetView ? '-ws' : '')}>
+          <FadeIn keyProp={transitionKey + (showReportBuilder ? '-rb' : showWorksheetView ? '-ws' : '')} key={transitionKey + (showReportBuilder ? '-rb' : showWorksheetView ? '-ws' : '')}>
             <div className="page-transition" style={{ flex: 1 }}>
-              {showWorksheetView
+              {showReportBuilder
+                ? <ReportBuilderView
+                    onBack={() => { setShowReportBuilder(false); setShowIrisSidebar(false); setActiveTab('agreements'); }}
+                    onSave={() => { setShowReportBuilder(false); }}
+                    measure={reportConfig.measure}
+                    aggregation={reportConfig.measure === 'Number of contracts' ? 'Count' : reportConfig.measure === 'Average deal size' ? 'Average' : 'Sum'}
+                    groupBy={reportConfig.groupBy.replace('By ', '').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                  />
+                : showWorksheetView
                 ? <WorksheetView onBack={() => { setShowWorksheetView(false); }} worksheetType={worksheetType} />
                 : contentMap[activeTab]}
             </div>
@@ -6442,21 +8188,110 @@ export default function App() {
       </div>
       {showIrisSidebar && (
         <IrisSidebar
-          question={submittedSearch}
+          key={irisFlowId ?? `blank-${irisKey}`}
+          question={irisFlowId ? submittedSearch : ''}
           followUp={irisFollowUp}
-          onClose={() => { setShowIrisSidebar(false); setIrisFollowUp(undefined); setIrisFlowId(undefined); setShowWorksheetView(false); }}
+          onClose={() => { setShowIrisSidebar(false); setIrisFollowUp(undefined); setIrisFlowId(undefined); setShowWorksheetView(false); setShowReportBuilder(false); setSidebarSkipThinking(false); }}
           onBuildWorksheet={handleBuildWorksheet}
+          onBuildReport={(measure, groupBy) => {
+            const measureMap: Record<string, string> = {
+              'Contract value': 'Annual Contract Value',
+              'Number of contracts': 'Contract Count',
+              'Average deal size': 'Annual Contract Value',
+            };
+            const gbClean = (groupBy || 'By vendor category').replace('By ', '').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            setReportConfig({ measure: measureMap[measure] || measure, groupBy: gbClean });
+            setActiveTab('insights');
+            setInsightsSidebarView('reports');
+            setReportLoading(true);
+            setTimeout(() => {
+              setReportLoading(false);
+              setShowReportBuilder(true);
+            }, 8000);
+          }}
           worksheetMode={showWorksheetView}
           flowId={irisFlowId}
+          skipThinking={sidebarSkipThinking}
+          onOpenWorksheetEntry={(query) => { setStartWorksheetQuery(query); setShowStartWorksheetModal(true); }}
         />
       )}
     </div>
+    {showStartWorksheetModal && (
+      <StartWorksheetModal
+        prefillQuery={startWorksheetQuery}
+        onClose={() => setShowStartWorksheetModal(false)}
+        onGenerate={() => { setShowStartWorksheetModal(false); setIrisFlowId('ws_complete'); setIrisFollowUp(startWorksheetQuery); handleBuildWorksheet('deep-analysis'); }}
+      />
+    )}
     {showAgreementDetail && (
       <AgreementDetailView onClose={() => setShowAgreementDetail(false)} />
     )}
+    {showFsIris && fsFlowId && (
+      <FullScreenIrisChat
+        key={fsQuery}
+        flowId={fsFlowId}
+        query={fsQuery}
+        skipThinking={fsSkipThinking}
+        onClose={() => { setShowFsIris(false); setFsSkipThinking(false); if (fsFlowId === 'fs_deep') { setSubmittedSearch(fsQuery); setSelectedQueryId('sq_deep'); } }}
+        onCollapse={() => {
+          setShowFsIris(false);
+          setFsSkipThinking(false);
+          setIrisFlowId(fsFlowId === 'fs_deep' ? 'sq_deep' : 'sq_spend');
+          setIrisFollowUp(undefined);
+          setSubmittedSearch(fsQuery);
+          setSelectedQueryId(fsFlowId === 'fs_deep' ? 'sq_deep' : 'sq_spend');
+          setSidebarSkipThinking(true);
+          setShowIrisSidebar(true);
+        }}
+        onBuildWorksheet={(type) => { setShowFsIris(false); handleBuildWorksheet(type); }}
+        onBuildReport={(measure, groupBy) => {
+          setShowFsIris(false);
+          const gbClean = groupBy.replace('By ', '').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          setReportConfig({ measure, groupBy: gbClean });
+          setActiveTab('insights');
+          setInsightsSidebarView('reports');
+          setReportLoading(true);
+          setTimeout(() => { setReportLoading(false); setShowReportBuilder(true); }, 8000);
+        }}
+      />
+    )}
     {worksheetLoading && <WorksheetLoadingOverlay worksheetType={worksheetType} />}
+    {reportLoading && <WorksheetLoadingOverlay worksheetType="report-builder" />}
     {showWorksheetModal && (
       <WorksheetModal onClose={() => setShowWorksheetModal(false)} worksheetType={worksheetType} />
+    )}
+    {showWIPModal && (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)' }}>
+        <div style={{ background: '#fff', borderRadius: 14, padding: '32px 36px', maxWidth: 480, width: '90%', boxShadow: '0 12px 48px rgba(0,0,0,0.18)' }}>
+          <div style={{ marginBottom: 16 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const, letterSpacing: '0.08em', color: '#92400E', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 100, padding: '3px 10px' }}>
+              Work in Progress
+            </span>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--ink-text-primary)', marginBottom: 14, lineHeight: 1.3 }}>Search Vision Prototype</div>
+          <p style={{ margin: '0 0 10px', fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-secondary)', fontFamily: 'inherit' }}>
+            This is a directional prototype showing how <strong style={{ color: 'var(--ink-text-primary)' }}>Search as a front door</strong> could function in Agreement Manager. All scenarios, vendor names, and contract data are <strong style={{ color: 'var(--ink-text-primary)' }}>fictional</strong>.
+          </p>
+          <p style={{ margin: '0 0 16px', fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-secondary)', fontFamily: 'inherit' }}>
+            It is meant to show direction — not final product behavior or engineering commitments.
+          </p>
+          <p style={{ margin: '0 0 24px', fontSize: 14, lineHeight: 1.7, color: 'var(--ink-text-secondary)', fontFamily: 'inherit' }}>
+            For more finalized designs, <a href="https://www.figma.com/design/P7vv9ve50WQBDXh95uO1Jy/CY26---Search-Find---Share----Manage--Document-Management?node-id=464-118829&t=c6Mxq7hviY0wT3Nj-1" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 600, textDecoration: 'none' }}>view the Figma file →</a>
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--ink-neutral-fade-05, #f7f7f9)', border: '1px solid var(--ink-border-color-subtle)', borderRadius: 8, padding: '12px 16px', marginBottom: 28 }}>
+            <span style={{ fontSize: 13, color: 'var(--ink-text-secondary)' }}>Questions or feedback?</span>
+            <span style={{ fontSize: 13, color: 'var(--ink-purple-100, #4B47C8)', fontWeight: 600 }}>Slack Sehoon Park</span>
+          </div>
+          <button
+            onClick={() => setShowWIPModal(false)}
+            style={{ background: 'var(--ink-purple-100, #4B47C8)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#3d39b0'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--ink-purple-100, #4B47C8)'; }}
+          >
+            Got it, let's explore
+          </button>
+        </div>
+      </div>
     )}
     </>
   );
